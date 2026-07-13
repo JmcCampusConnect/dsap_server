@@ -351,28 +351,28 @@ Feature branches are created from `develop` and merged back into `develop`. `mai
 Use the Jira ticket key exactly as shown in Jira, followed by a short kebab-case description:
 
 ```bash
-git checkout -b AF-121-implement-ui-for-login-screen
+git checkout -b AF-121-add-auth-token-refresh-endpoint
 ```
 
 Examples:
 
-- `AF-121-implement-ui-for-login-screen`
-- `AF-134-fix-service-directory-pagination`
-- `AF-140-add-workflow-step-validation`
+- `AF-121-add-auth-token-refresh-endpoint`
+- `AF-134-fix-student-lookup-pagination`
+- `AF-140-add-request-validation-rule`
 
 ### 3. Commit Message Convention
 
 Use a short, present-tense summary with the ticket key:
 
 ```bash
-git commit -m "AF-121: add login form skeleton"
+git commit -m "AF-121: add token refresh endpoint"
 ```
 
 Examples:
 
-- `AF-121: add login form skeleton`
-- `AF-121: wire login form to auth API`
-- `AF-121: fix validation error message wrapping`
+- `AF-121: add token refresh endpoint`
+- `AF-121: wire refresh logic to auth service`
+- `AF-121: fix validation error for request payload`
 
 ### 4. Standard Workflow
 
@@ -386,7 +386,7 @@ git pull origin develop
 2. Create a branch for the ticket
 
 ```bash
-git checkout -b AF-121-implement-ui-for-login-screen
+git checkout -b AF-121-add-auth-token-refresh-endpoint
 ```
 
 3. Work and commit in small checkpoints
@@ -394,13 +394,13 @@ git checkout -b AF-121-implement-ui-for-login-screen
 ```bash
 git status
 git add <file1> <file2>
-git commit -m "AF-121: add login form skeleton"
+git commit -m "AF-121: add token refresh endpoint"
 ```
 
 4. Push early and often
 
 ```bash
-git push -u origin AF-121-implement-ui-for-login-screen
+git push -u origin AF-121-add-auth-token-refresh-endpoint
 ```
 
 5. Keep the branch updated while you work
@@ -431,7 +431,7 @@ git diff --stat origin/develop..HEAD
 
 ```bash
 git add <file>
-git commit -m "AF-121: address review comment on serializer validation"
+git commit -m "AF-121: address review comment on refresh validation"
 git push
 ```
 
@@ -442,7 +442,7 @@ Once approved, the project lead merges the PR using Squash and Merge. After that
 ```bash
 git checkout develop
 git pull origin develop
-git branch -d AF-121-implement-ui-for-login-screen
+git branch -d AF-121-add-auth-token-refresh-endpoint
 ```
 
 ### 5. Resolving Merge Conflicts
@@ -552,11 +552,4 @@ Automated pipeline stages run on every pull request and on merge to `main`:
 
 ---
 
-## License
-
-Add your preferred license information here.
-
-## Contact
-
-Add your contact details or maintainer information here.
 
