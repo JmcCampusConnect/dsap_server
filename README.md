@@ -90,7 +90,7 @@ The API runs at `http://localhost:8000/api/v1` by default.
 ---
 
 ## Environment Variables
-
+ 
 Create a `.env` file with values such as:
 
 ```env
@@ -306,31 +306,10 @@ def send_notification(self, notification_id):
 ## Security
 
 - Use JWT access and refresh tokens (SimpleJWT) with short-lived access tokens and refresh rotation enabled
-- Require OTP verification for login and for sensitive actions such as changing a mobile number
 - Validate and sanitize all input at the serializer layer; never trust client-supplied IDs without an object-permission check
 - Keep the CORS allow-list restricted to known frontend origins per environment
-- Apply rate limiting to auth and OTP endpoints to reduce brute-force and SMS-bombing risks
 - Protect sensitive fields such as `aadhar_no` and `password_hash` through encryption or hashing, and mask them in API responses by default
 - Write each create, update, delete, login, and export action to `AuditLog`
-
----
-
-## Testing
-
-```bash
-# Run the full suite
-pytest
-
-# With coverage
-pytest --cov=apps --cov-report=term-missing
-
-# A single app
-pytest apps/requests
-```
-
-- Use `factory_boy` factories instead of hand-built fixtures for model instances
-- Test permission classes explicitly; a role that should receive a `403` must be asserted, not assumed
-- Target 85% line coverage on `apps/` before merging a feature branch
 
 ---
 
@@ -347,11 +326,12 @@ This document is the single source of truth for how the team branches, commits, 
 ### 1. Branching Model
 
 - One branch per Jira ticket, always cut from an up-to-date `development`.
-- Branch name format: `<TICKET-ID>-<short-kebab-case-description>`.
+- Branch name format: `<TICKET-ID>-<short-kebab-case-description>-FE`.
+- Here FE means Frontend and BE means Backend.
 
 ```bash
-AF-121-implement-ui-for-login-screen
-AF-134-fix-otp-expiry-bug
+AF-121-implement-ui-for-login-screen-FE
+AF-134-fix-otp-expiry-bug-BE
 ```
 
 - Never reuse a branch for a second, unrelated ticket.
@@ -474,7 +454,6 @@ GitHub re-evaluates the PR automatically after you push.
 3. Title the PR with the ticket ID, for example: `AF-121: Implement UI for login screen`.
 4. Fill in the PR description with the Jira ticket link, a short summary, and screenshots for UI changes.
 5. Assign the project lead as reviewer.
-6. Wait for CI (lint/tests) to pass before requesting review.
 
 ### 8. Responding to Review Feedback
 
@@ -486,28 +465,7 @@ git commit -m "AF-121: address review comments — extract validation logic"
 git push
 ```
 
-Avoid force-pushing an in-review branch unless absolutely necessary. If you do need to rewrite history, use:
-
-```bash
-git push --force-with-lease
-```
-
-This is safer than `--force` because it refuses to overwrite the remote branch if someone else has pushed to it since you last fetched.
-
-### 9. Merging
-
-Use Squash and Merge on GitHub. Each PR becomes a single commit on `development`, titled with the ticket ID. This keeps the branch readable and makes reverts easy.
-
-### 10. After Merge — Cleanup
-
-```bash
-git checkout development
-git pull origin development
-git branch -d AF-121-implement-ui-for-login-screen
-git push origin --delete AF-121-implement-ui-for-login-screen
-```
-
-### 11. Command Reference
+### 10. Command Reference
 
 | Command | What it does | When to use it |
 | --- | --- | --- |
@@ -524,24 +482,12 @@ git push origin --delete AF-121-implement-ui-for-login-screen
 | `git diff --name-only --diff-filter=U` | List only conflicted file paths | Right after a merge reports conflicts |
 | `git push --force-with-lease` | Safely overwrite your own remote branch | Only after rewriting commits mid-review |
 
-### 12. Quick Troubleshooting
+### 11. Quick Troubleshooting
 
 - If you committed straight to `development` by accident, tell the project lead immediately rather than trying to fix it alone.
 - If you force-pushed and think you lost commits, inspect `git reflog`.
 - If a PR shows conflicts, someone else likely merged into `development` after you branched. Go straight to Section 6.
 - If you want to preview a merge before committing to it, run `git fetch origin` and `git diff HEAD origin/development`.
-
----
-
-## CI/CD Pipeline
-
-Automated pipeline stages run on every pull request and on merge to `development`:
-
-- Install dependencies and run `ruff` / `black --check`
-- Run `python manage.py makemigrations --check` to catch missing migrations
-- Run the pytest suite with coverage
-- Build the release artifact (versioned Python package / wheel)
-- Deploy to staging automatically on merge to `development`; deploy to production on a tagged release behind Gunicorn/Uvicorn with a reverse proxy such as Nginx and managed through the platform's process supervisor
 
 ---
 
