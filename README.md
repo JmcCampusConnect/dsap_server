@@ -479,19 +479,7 @@ If the branch has been open for several days:
 4. Merge `origin/develop` and resolve conflicts
 5. Re-run relevant backend checks before pushing
 
-### 7. Releasing `develop` to `main`
-
-When `develop` is stable enough to ship:
-
-```bash
-git checkout main
-git pull origin main
-git merge --no-ff develop
-git tag -a v1.1.0 -m "Release v1.1.0"
-git push origin main --tags
-```
-
-### 8. Quick Command Reference
+### 7. Quick Command Reference
 
 - `git status`: see local changes and conflicts
 - `git diff --name-only --diff-filter=U`: list conflicted files only
