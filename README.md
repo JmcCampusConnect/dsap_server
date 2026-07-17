@@ -336,187 +336,212 @@ pytest apps/requests
 
 ## Git & GitHub Workflow Guide
 
-This workflow applies to both the backend and frontend repositories. Use it for every Jira ticket so the branch, PR, and ticket stay connected.
+This document is the single source of truth for how the team branches, commits, syncs, and merges code. Everyone should be able to follow it end to end.
 
-### 1. Branching Strategy
+### Golden Rule
 
-- `main`: always deployable and reflects production
-- `develop`: integration branch for completed work before release
-- `<TICKET>-<description>`: one branch per Jira ticket where the actual work happens
+- `development` is the integration branch and should remain in a releasable state.
+- Nobody commits directly to `development`.
+- Every change comes in through a branch and a pull request (PR) to `development`.
 
-Feature branches are created from `develop` and merged back into `develop`. `main` changes only through a reviewed release step.
+### 1. Branching Model
 
-### 2. Branch Naming Convention
-
-Use the Jira ticket key exactly as shown in Jira, followed by a short kebab-case description:
+- One branch per Jira ticket, always cut from an up-to-date `development`.
+- Branch name format: `<TICKET-ID>-<short-kebab-case-description>`.
 
 ```bash
-git checkout -b AF-121-add-auth-token-refresh-endpoint
+AF-121-implement-ui-for-login-screen
+AF-134-fix-otp-expiry-bug
 ```
 
-Examples:
+- Never reuse a branch for a second, unrelated ticket.
 
-- `AF-121-add-auth-token-refresh-endpoint`
-- `AF-134-fix-student-lookup-pagination`
-- `AF-140-add-request-validation-rule`
+### 2. Starting Work on a Ticket
 
-### 3. Commit Message Convention
-
-Use a short, present-tense summary with the ticket key:
+Always start from a fresh `development` branch to avoid merge drift.
 
 ```bash
-git commit -m "AF-121: add token refresh endpoint"
+git checkout development
+git pull origin development
+git checkout -b AF-121-implement-ui-for-login-screen
 ```
 
-Examples:
+### 3. While You Work — Commit & Push
 
-- `AF-121: add token refresh endpoint`
-- `AF-121: wire refresh logic to auth service`
-- `AF-121: fix validation error for request payload`
-
-### 4. Standard Workflow
-
-1. Sync `develop` before starting work
+Commit in small, meaningful chunks rather than one large commit at the end. Prefix every commit message with the ticket ID so history and blame stay traceable to Jira.
 
 ```bash
-git checkout develop
-git pull origin develop
+git add <specific files>
+git commit -m "AF-121: add login form skeleton"
 ```
 
-2. Create a branch for the ticket
+First push on a new branch needs `-u` to link it to the remote:
 
 ```bash
-git checkout -b AF-121-add-auth-token-refresh-endpoint
+git push -u origin AF-121-implement-ui-for-login-screen
 ```
 
-3. Work and commit in small checkpoints
+Every push after that is just:
 
 ```bash
-git status
-git add <file1> <file2>
-git commit -m "AF-121: add token refresh endpoint"
-```
-
-4. Push early and often
-
-```bash
-git push -u origin AF-121-add-auth-token-refresh-endpoint
-```
-
-5. Keep the branch updated while you work
-
-```bash
-git fetch origin
-git merge origin/develop
-```
-
-6. Check what will be included in the PR before pushing again
-
-```bash
-git status
-git log --oneline origin/develop..HEAD
-git log --oneline HEAD..origin/develop
-git diff --stat origin/develop..HEAD
-```
-
-7. Open a pull request
-
-- Base branch: `develop`
-- Compare branch: your feature branch
-- Title: `AF-121: add login form skeleton`
-- Description: what changed, how to test it, and the Jira ticket link
-- Include migration files and test evidence for backend changes
-
-8. Respond to review feedback
-
-```bash
-git add <file>
-git commit -m "AF-121: address review comment on refresh validation"
 git push
 ```
 
-9. Merge and clean up
+### 4. Before Opening a PR — Sync With `development`
 
-Once approved, the project lead merges the PR using Squash and Merge. After that:
+Do this every time, not only when GitHub warns you. `development` moves forward as other PRs get merged.
 
 ```bash
-git checkout develop
-git pull origin develop
-git branch -d AF-121-add-auth-token-refresh-endpoint
+git checkout AF-121-implement-ui-for-login-screen
+git fetch origin
+git status
 ```
 
-### 5. Resolving Merge Conflicts
+See what changed on each side before merging:
 
-If `git merge origin/develop` reports conflicts:
+```bash
+# Commits on development that you do not have yet
+git log --oneline HEAD..origin/development
+
+# Commits on your branch that development does not have yet
+git log --oneline origin/development..HEAD
+```
+
+Bring `development` into your branch:
+
+```bash
+git merge origin/development
+```
+
+Use `merge`, not `rebase`, as the default for this team. Rebase rewrites commit history and requires a force-push, which is easy to get wrong and risky if a teammate has also pulled your branch.
+
+If Git reports `Already up to date.` — great. If it reports conflicts, continue to the next section.
+
+### 5. Resolving a Merge Conflict
+
+When `git merge origin/development` stops with conflicts, work through them methodically:
 
 ```bash
 git status
+```
+
+To see only the conflicted files:
+
+```bash
 git diff --name-only --diff-filter=U
 ```
 
-Open each conflicted file, keep the correct combined result, remove the conflict markers, then:
+For each conflicted file:
+
+1. Open it in the editor and resolve the conflict markers.
+2. Keep the correct combined result, then delete the `<<<<<<<`, `=======`, and `>>>>>>>` lines.
+3. Save the file.
+
+Once all conflicts are resolved:
 
 ```bash
-git add <resolved-file>
+git add <resolved files>
 git status
 git commit
 git push
 ```
 
-If needed, cancel the merge and try again:
+### 6. The "Branch Sat for 10 Days" Scenario — Direct Fix
+
+If GitHub shows that the branch has conflicts or is out of date:
 
 ```bash
-git merge --abort
+git checkout AF-121-implement-ui-for-login-screen
+git fetch origin
+git log --oneline HEAD..origin/development
+git merge origin/development
 ```
 
-### 6. If the Branch Sat Untouched for a While
+If conflicts appear, resolve them as described above, then:
 
-If the branch has been open for several days:
+```bash
+git add .
+git commit
+git push
+```
 
-1. Commit or stash local work
-2. Fetch the latest remote state
-3. Compare with `develop`
-4. Merge `origin/develop` and resolve conflicts
-5. Re-run relevant backend checks before pushing
+GitHub re-evaluates the PR automatically after you push.
 
-### 7. Quick Command Reference
+### 7. Opening the Pull Request
 
-- `git status`: see local changes and conflicts
-- `git diff --name-only --diff-filter=U`: list conflicted files only
-- `git log --oneline branchA..branchB`: compare commits between branches
-- `git fetch origin`: download the latest remote state
-- `git branch -vv`: see branch tracking status
-- `git stash` / `git stash pop`: temporarily save or restore local changes
-- `git merge --abort`: cancel an in-progress merge
+1. Push your branch.
+2. On GitHub, set base to `development` and compare to your branch.
+3. Title the PR with the ticket ID, for example: `AF-121: Implement UI for login screen`.
+4. Fill in the PR description with the Jira ticket link, a short summary, and screenshots for UI changes.
+5. Assign the project lead as reviewer.
+6. Wait for CI (lint/tests) to pass before requesting review.
 
-### 9. Do's and Don'ts
+### 8. Responding to Review Feedback
 
-Do:
+Push additional commits to the same branch and let the PR update automatically.
 
-- Sync from `develop` before starting a ticket and again if it stays open for more than a day or two
-- Run `git status` before every add/commit
-- Push early and often
-- Keep PRs scoped to one ticket
-- Include migration files and relevant tests for backend changes
+```bash
+git add <changed files>
+git commit -m "AF-121: address review comments — extract validation logic"
+git push
+```
 
-Don't:
+Avoid force-pushing an in-review branch unless absolutely necessary. If you do need to rewrite history, use:
 
-- Commit directly to `develop` or `main`
-- Use `git add .` without checking `git status`
-- Force-push to `develop` or `main`
-- Leave a finished ticket unreviewed for too long
+```bash
+git push --force-with-lease
+```
+
+This is safer than `--force` because it refuses to overwrite the remote branch if someone else has pushed to it since you last fetched.
+
+### 9. Merging
+
+Use Squash and Merge on GitHub. Each PR becomes a single commit on `development`, titled with the ticket ID. This keeps the branch readable and makes reverts easy.
+
+### 10. After Merge — Cleanup
+
+```bash
+git checkout development
+git pull origin development
+git branch -d AF-121-implement-ui-for-login-screen
+git push origin --delete AF-121-implement-ui-for-login-screen
+```
+
+### 11. Command Reference
+
+| Command | What it does | When to use it |
+| --- | --- | --- |
+| `git checkout development && git pull origin development` | Update your local `development` branch | Before starting any new ticket |
+| `git checkout -b <branch>` | Create and switch to a new branch | Starting a new ticket |
+| `git status` | Show staged, unstaged, and conflicted files | Constantly |
+| `git add <files>` | Stage changes for a commit | Before every commit |
+| `git commit -m "TICKET: message"` | Record a commit | After staging changes |
+| `git push -u origin <branch>` | Push a new branch and link it to the remote | First push on a new branch |
+| `git push` | Push subsequent commits | Every push after the first |
+| `git fetch origin` | Download the latest remote history without changing your files | Before syncing with `development` |
+| `git log --oneline A..B` | List commits on `B` not on `A` | Checking what you are about to merge |
+| `git merge origin/development` | Bring `development`'s changes into your branch | Before opening or updating a PR |
+| `git diff --name-only --diff-filter=U` | List only conflicted file paths | Right after a merge reports conflicts |
+| `git push --force-with-lease` | Safely overwrite your own remote branch | Only after rewriting commits mid-review |
+
+### 12. Quick Troubleshooting
+
+- If you committed straight to `development` by accident, tell the project lead immediately rather than trying to fix it alone.
+- If you force-pushed and think you lost commits, inspect `git reflog`.
+- If a PR shows conflicts, someone else likely merged into `development` after you branched. Go straight to Section 6.
+- If you want to preview a merge before committing to it, run `git fetch origin` and `git diff HEAD origin/development`.
 
 ---
 
 ## CI/CD Pipeline
 
-Automated pipeline stages run on every pull request and on merge to `main`:
+Automated pipeline stages run on every pull request and on merge to `development`:
 
 - Install dependencies and run `ruff` / `black --check`
 - Run `python manage.py makemigrations --check` to catch missing migrations
 - Run the pytest suite with coverage
 - Build the release artifact (versioned Python package / wheel)
-- Deploy to staging automatically on merge to `develop`; deploy to production on a tagged release behind Gunicorn/Uvicorn with a reverse proxy such as Nginx and managed through the platform's process supervisor
+- Deploy to staging automatically on merge to `development`; deploy to production on a tagged release behind Gunicorn/Uvicorn with a reverse proxy such as Nginx and managed through the platform's process supervisor
 
 ---
 
@@ -533,7 +558,7 @@ Automated pipeline stages run on every pull request and on merge to `main`:
 
 ## Contributing
 
-1. Create a feature branch from `develop`
+1. Create a feature branch from `development`
 2. Implement the change following the standards in this guide
 3. Run `ruff`, `black --check`, and `pytest` locally
 4. Address review feedback and wait for approval
