@@ -24,5 +24,5 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
 
     def validate_category(self, value):
         if value not in dict(AcademicDepartment.CATEGORY_CHOICES).keys():
-            raise serializers.ValidationError("Invalid category. Must be 'Arts' or 'Science'.")
+            raise serializers.ValidationError("Invalid category. Must be 'AIDED', 'SFM', or 'SFW'.")
         return value

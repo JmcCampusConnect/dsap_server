@@ -25,6 +25,16 @@ class ServiceDepartment(models.Model):
 
 
 class AcademicDepartment(models.Model):
+    TYPE_CHOICES = (
+        ('UG', 'Undergraduate'),
+        ('PG', 'Postgraduate'),
+    )
+    
+    CATEGORY_CHOICES = (
+        ('AIDED', 'Aided'),
+        ('SFM', 'Self Finance (Men)'),
+        ('SFW', 'Self Finance (Women)'),
+    )
 
     id = models.BigAutoField(primary_key=True)
     code = models.CharField(max_length=20, unique=True)
