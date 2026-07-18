@@ -164,6 +164,13 @@ dasp-server/
 │   ├── celery.py
 │   └── tasks.py
 │
+├── seeders/                      # Lightweight database seeders
+│   ├── __init__.py
+│   ├── runner.py
+│   ├── role_seeder.py
+│   └── user_seeder.py
+│   └── ... (add more as needed)
+│
 ├── tests/                        # Cross-app integration tests
 ├── requirements/
 │   ├── base.txt
@@ -172,6 +179,36 @@ dasp-server/
 │
 └── manage.py
 ```
+
+---
+
+## Database Seeders
+
+Use the seeder runner to populate the initial reference data needed for local development.
+
+### Quick Start
+
+```bash
+cd dsap_server
+python seeders/runner.py
+```
+
+Run a single seeder:
+
+```bash
+python seeders/runner.py role_seeder
+python seeders/runner.py user_seeder
+```
+
+List available seeders:
+
+```bash
+python seeders/runner.py --list
+```
+
+### Adding a New Seeder
+
+Create a new file in the `seeders/` folder, follow the existing `role_seeder.py` or `user_seeder.py` pattern, and register it in `seeders/runner.py`.
 
 ---
 
@@ -319,9 +356,12 @@ This document is the single source of truth for how the team branches, commits, 
 
 ### Golden Rule
 
+- `main` is the production branch and should not be used for development.
+- Do not commit directly to `main`.
+- Do not create feature branches from `main`; always create them from `development`.
 - `development` is the integration branch and should remain in a releasable state.
 - Nobody commits directly to `development`.
-- Every change comes in through a branch and a pull request (PR) to `development`.
+- Every change comes in through a feature branch and a pull request (PR) to `development`.
 
 ### 1. Branching Model
 
