@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -42,6 +43,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     
+    # =========== NEW: Third-party apps ===========
+    'rest_framework',              # DRF core
+    'rest_framework_simplejwt',    # JWT handling
+    'rest_framework_simplejwt.token_blacklist',  # Blacklist support fro logout
+    'corsheaders',                # CORS handling
+    
     # Local apps
     'common',
     'apps.accounts',
@@ -57,6 +64,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -85,6 +93,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+AUTH_USER_MODEL = 'common.User'  
+
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
@@ -95,6 +105,48 @@ DATABASES = {
     )
 }
 
+# ==================== DJANGO REST FRAMEWORK ====================
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',      # Default; we'll secure views manually
+    ),
+}
+
+# ==================== SIMPLE JWT CONFIG ====================
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,                  # Gives new refresh on refresh
+    'BLACKLIST_AFTER_ROTATION': True,               # Blacklist old refresh tokens
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
+}
+
+# ==================== CORS ====================
+# For development – allow all origins (restrict later with ALLOWED_ORIGINS)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# If you want to restrict to specific frontend URLs in production, use this instead:
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+#     "https://your-frontend-domain.com",
+# ]
+
+AUTHENTICATION_BACKENDS = [
+    'common.backends.CommonUserBackend',
+    'django.contrib.auth.backends.ModelBackend',  # fallback
+]
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

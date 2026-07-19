@@ -39,7 +39,7 @@ class IsOwnAcademicDepartment(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         if not hasattr(request.user, 'role') or not request.user.role:
-            return Fals
+            return False
         user_role = request.user.role.name
         return user_role in ['SUBJECT_TEACHING_STAFF']
 
