@@ -41,8 +41,8 @@ class AcademicDepartment(models.Model):
     name = models.CharField(max_length=150)
     degree = models.CharField(max_length=50)
     branch = models.CharField(max_length=100)
-    type = models.CharField(max_length=2)
-    category = models.CharField(max_length=10)
+    type = models.CharField(max_length=100)
+    category = models.CharField(max_length=100)
     hod_user_id = models.ForeignKey(
         'common.User',
         on_delete=models.RESTRICT,
