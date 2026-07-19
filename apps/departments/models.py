@@ -18,22 +18,22 @@ class ServiceDepartment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'service_department'
+        db_table = 'service_department' 
 
     def __str__(self):
         return f"{self.code} - {self.name}"
 
 
 class AcademicDepartment(models.Model):
+    
     TYPE_CHOICES = (
         ('UG', 'Undergraduate'),
         ('PG', 'Postgraduate'),
     )
     
     CATEGORY_CHOICES = (
-        ('AIDED', 'Aided'),
-        ('SFM', 'Self Finance (Men)'),
-        ('SFW', 'Self Finance (Women)'),
+        ('ARTS', 'Arts'),
+        ('SCIENCE', 'Science'),
     )
 
     id = models.BigAutoField(primary_key=True)
