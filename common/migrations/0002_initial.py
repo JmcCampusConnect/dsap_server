@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='user',
             name='role_id',
-            field=models.ForeignKey(db_column='role_id', on_delete=django.db.models.deletion.RESTRICT, to='common.role'),
+            field=models.ForeignKey(db_column='role_id', on_delete=django.db.models.deletion.RESTRICT, to='accounts.role'),
         ),
         migrations.AddField(
             model_name='user',

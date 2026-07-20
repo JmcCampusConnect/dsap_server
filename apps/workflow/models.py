@@ -15,7 +15,11 @@ class WorkflowStep(models.Model):
     step_name = models.CharField(max_length=150)
 
     responsible_role_id = models.ForeignKey(
+<<<<<<< HEAD
         'common.Role',
+=======
+        'accounts.Role',
+>>>>>>> development
         on_delete=models.RESTRICT,
         db_column='responsible_role_id'
     )
@@ -52,6 +56,7 @@ class WorkflowHistory(models.Model):
 
     action_by_user_id = models.ForeignKey(
         'common.User',
+        'accounts.User',
         on_delete=models.RESTRICT,
         db_column='action_by_user_id'
     )

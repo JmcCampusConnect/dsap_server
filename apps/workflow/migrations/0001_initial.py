@@ -25,6 +25,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('responsible_role_id', models.ForeignKey(db_column='responsible_role_id', on_delete=django.db.models.deletion.RESTRICT, to='common.role')),
+                ('responsible_role_id', models.ForeignKey(db_column='responsible_role_id', on_delete=django.db.models.deletion.RESTRICT, to='accounts.role')),
                 ('service_id', models.ForeignKey(db_column='service_id', on_delete=django.db.models.deletion.CASCADE, to='services.service')),
             ],
             options={
@@ -39,7 +40,7 @@ class Migration(migrations.Migration):
                 ('action', models.CharField(max_length=30)),
                 ('remarks', models.TextField(blank=True, null=True)),
                 ('action_at', models.DateTimeField(auto_now_add=True)),
-                ('action_by_user_id', models.ForeignKey(db_column='action_by_user_id', on_delete=django.db.models.deletion.RESTRICT, to='common.user')),
+                ('action_by_user_id', models.ForeignKey(db_column='action_by_user_id', on_delete=django.db.models.deletion.RESTRICT, to='accounts.user')),
                 ('request_id', models.ForeignKey(db_column='request_id', on_delete=django.db.models.deletion.CASCADE, to='requests.request')),
                 ('step_id', models.ForeignKey(blank=True, db_column='step_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='workflow.workflowstep')),
             ],

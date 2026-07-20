@@ -27,6 +27,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='common.user')),
+                ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='accounts.user')),
             ],
             options={
                 'db_table': 'academic_department',
@@ -42,6 +43,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='common.user')),
+                ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='accounts.user')),
             ],
             options={
                 'db_table': 'service_department',

@@ -14,6 +14,15 @@ class Role(models.Model):
     def __str__(self):
         return self.name
 
+class SystemSetting(models.Model):
+    key = models.CharField(max_length=255, unique=True)
+    value = models.JSONField(default=dict, blank=True, null=True)
+
+    class Meta:
+        db_table = 'system_setting'
+
+    def __str__(self):
+        return self.key
 
 class User(models.Model):
 
@@ -60,6 +69,57 @@ class User(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email']
+    
+    @property
+    def is_authenticated(self):
+        """Required by Django's authentication system."""
+        return True
+
+    @property
+    def is_anonymous(self):
+        """Required by Django's authentication system."""
+        return False
+    
+    @property
+    def role(self):
+        """Alias for role_id to match the expected attribute name."""
+        return self.role_id
+
+    def check_password(self, raw_password):
+        """Check the password against the stored hash."""
+        from django.contrib.auth.hashers import check_password
+        return check_password(raw_password, self.password_hash)
+
+    def set_password(self, raw_password):
+        """Hash and set the password (not used by seeder, but good practice)."""
+        from django.contrib.auth.hashers import make_password
+        self.password_hash = make_password(raw_password)
+        self._password = raw_password
+
+    def get_username(self):
+        """Return the username (used by some auth internals)."""
+        return self.username
+
+    # Optional: if you want to support the admin interface, add:
+    @property
+    def is_staff(self):
+        return self.role_id.name == 'SYSTEM_ADMIN' if self.role_id else False
+
+    @property
+    def is_superuser(self):
+        return self.role_id.name == 'SYSTEM_ADMIN' if self.role_id else False
+
+    def has_perm(self, perm, obj=None):
+        return True   # implement custom permission logic if needed
+
+    def has_module_perms(self, app_label):
+        return True
+    
 
     class Meta:
         db_table = 'user'

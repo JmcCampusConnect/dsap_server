@@ -8,6 +8,7 @@ class ServiceDepartment(models.Model):
     name = models.CharField(max_length=150)
     hod_user_id = models.ForeignKey(
         'common.User',
+        'accounts.User',
         on_delete=models.RESTRICT,
         null=True,
         blank=True,
@@ -45,6 +46,7 @@ class AcademicDepartment(models.Model):
     category = models.CharField(max_length=100)
     hod_user_id = models.ForeignKey(
         'common.User',
+        'accounts.User',
         on_delete=models.RESTRICT,
         null=True,
         blank=True,
