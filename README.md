@@ -164,6 +164,13 @@ dasp-server/
 │   ├── celery.py
 │   └── tasks.py
 │
+├── seeders/                      # Lightweight database seeders
+│   ├── __init__.py
+│   ├── runner.py
+│   ├── role_seeder.py
+│   └── user_seeder.py
+│   └── ... (add more as needed)
+│
 ├── tests/                        # Cross-app integration tests
 ├── requirements/
 │   ├── base.txt
@@ -172,6 +179,36 @@ dasp-server/
 │
 └── manage.py
 ```
+
+---
+
+## Database Seeders
+
+Use the seeder runner to populate the initial reference data needed for local development.
+
+### Quick Start
+
+```bash
+cd dsap_server
+python seeders/runner.py
+```
+
+Run a single seeder:
+
+```bash
+python seeders/runner.py role_seeder
+python seeders/runner.py user_seeder
+```
+
+List available seeders:
+
+```bash
+python seeders/runner.py --list
+```
+
+### Adding a New Seeder
+
+Create a new file in the `seeders/` folder, follow the existing `role_seeder.py` or `user_seeder.py` pattern, and register it in `seeders/runner.py`.
 
 ---
 
@@ -319,9 +356,12 @@ This document is the single source of truth for how the team branches, commits, 
 
 ### Golden Rule
 
+- `main` is the production branch and should not be used for development.
+- Do not commit directly to `main`.
+- Do not create feature branches from `main`; always create them from `development`.
 - `development` is the integration branch and should remain in a releasable state.
 - Nobody commits directly to `development`.
-- Every change comes in through a branch and a pull request (PR) to `development`.
+- Every change comes in through a feature branch and a pull request (PR) to `development`.
 
 ### 1. Branching Model
 
@@ -336,7 +376,7 @@ AF-134-fix-otp-expiry-bug-BE
 
 - Never reuse a branch for a second, unrelated ticket.
 
-### 2. Starting Work on a Ticket
+### 2. Starting Work on a New Ticket
 
 Always start from a fresh `development` branch to avoid merge drift.
 
@@ -346,7 +386,32 @@ git pull origin development
 git checkout -b AF-121-implement-ui-for-login-screen
 ```
 
-### 3. While You Work — Commit & Push
+### 3. Resuming Work on an Existing Ticket
+
+If your Jira ticket moves back from **QA Testing** to **Development in Progress** (or you need to continue work on an existing feature branch), **do not create a new branch**. Continue working on the same branch after syncing it with the latest `development`.
+
+First, update your local `development` branch:
+
+```bash
+git checkout development
+git pull origin development
+```
+
+Switch back to your feature branch:
+
+```bash
+git checkout AF-121-implement-ui-for-login-screen
+```
+
+Merge the latest changes from `development` into your branch:
+
+```bash
+git merge development
+```
+
+If merge conflicts occur, resolve them before continuing. Once the branch is up to date, continue implementing the required changes, commit them, and push them to the same branch. The existing pull request will update automatically after you push.
+
+### 4. While You Work — Commit & Push
 
 Commit in small, meaningful chunks rather than one large commit at the end. Prefix every commit message with the ticket ID so history and blame stay traceable to Jira.
 
@@ -367,7 +432,7 @@ Every push after that is just:
 git push
 ```
 
-### 4. Before Opening a PR — Sync With `development`
+### 5. Before Opening a PR — Sync With `development`
 
 Do this every time, not only when GitHub warns you. `development` moves forward as other PRs get merged.
 
@@ -397,7 +462,7 @@ Use `merge`, not `rebase`, as the default for this team. Rebase rewrites commit 
 
 If Git reports `Already up to date.` — great. If it reports conflicts, continue to the next section.
 
-### 5. Resolving a Merge Conflict
+### 6. Resolving a Merge Conflict
 
 When `git merge origin/development` stops with conflicts, work through them methodically:
 
@@ -426,7 +491,7 @@ git commit
 git push
 ```
 
-### 6. The "Branch Sat for 10 Days" Scenario — Direct Fix
+### 7. The "Branch Sat for 10 Days" Scenario — Direct Fix
 
 If GitHub shows that the branch has conflicts or is out of date:
 
@@ -447,7 +512,7 @@ git push
 
 GitHub re-evaluates the PR automatically after you push.
 
-### 7. Opening the Pull Request
+### 8. Opening the Pull Request
 
 1. Push your branch.
 2. On GitHub, set base to `development` and compare to your branch.
@@ -455,7 +520,7 @@ GitHub re-evaluates the PR automatically after you push.
 4. Fill in the PR description with the Jira ticket link, a short summary, and screenshots for UI changes.
 5. Assign the project lead as reviewer.
 
-### 8. Responding to Review Feedback
+### 9. Responding to Review Feedback
 
 Push additional commits to the same branch and let the PR update automatically.
 
@@ -465,7 +530,11 @@ git commit -m "AF-121: address review comments — extract validation logic"
 git push
 ```
 
-### 10. Command Reference
+### 10. Merging
+
+Use Squash and Merge on GitHub. Each PR becomes a single commit on `development`, titled with the ticket ID. This keeps the branch readable and makes reverts easy.
+
+### 11. Command Reference
 
 | Command | What it does | When to use it |
 | --- | --- | --- |
@@ -482,7 +551,7 @@ git push
 | `git diff --name-only --diff-filter=U` | List only conflicted file paths | Right after a merge reports conflicts |
 | `git push --force-with-lease` | Safely overwrite your own remote branch | Only after rewriting commits mid-review |
 
-### 11. Quick Troubleshooting
+### 12. Quick Troubleshooting
 
 - If you committed straight to `development` by accident, tell the project lead immediately rather than trying to fix it alone.
 - If you force-pushed and think you lost commits, inspect `git reflog`.

@@ -42,10 +42,17 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+<<<<<<< HEAD
     # Third-party apps
     'rest_framework',
     'corsheaders',
     
+=======
+    # Third-party
+    'rest_framework',
+    'corsheaders',
+
+>>>>>>> development
     # Local apps
     'common',
     'apps.accounts',
@@ -61,6 +68,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -137,6 +145,23 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# ── Django REST Framework ─────────────────────────────────────────────────────
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'common.pagination.StandardPagination',
+    'PAGE_SIZE': 10,
+}
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Reads allowed origins from .env: CORS_ALLOWED_ORIGINS=http://localhost:5173
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    origin.strip()
+    for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+    if origin.strip()
 ]
+CORS_ALLOW_CREDENTIALS = True
