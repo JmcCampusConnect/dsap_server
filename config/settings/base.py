@@ -47,11 +47,12 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',    # JWT handling
-    'rest_framework_simplejwt.token_blacklist'
+    'rest_framework_simplejwt.token_blacklist',
 
     # Local apps
     'common',
     'apps.accounts',
+    'apps.audit',
     'apps.students',
     'apps.departments',
     'apps.services',
@@ -92,8 +93,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
-
-AUTH_USER_MODEL = 'common.User'  
 
 
 # Database

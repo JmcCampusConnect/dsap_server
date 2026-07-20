@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
-from common.models import User
+from apps.accounts.models import User
 from common.serializers import UserSerializer
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):

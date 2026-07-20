@@ -7,7 +7,7 @@ from django.db.models import Q
 from apps.departments.models import AcademicDepartment
 from apps.departments.serializers.academic_department import AcademicDepartmentSerializer
 from common.pagination import StandardPagination
-from common.models import AuditLog
+from apps.audit.models import AuditLog
 
 
 class AcademicDepartmentViewSet(viewsets.ModelViewSet):

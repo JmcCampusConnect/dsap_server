@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AuditLog
+from apps.audit.models import AuditLog
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
