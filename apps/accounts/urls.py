@@ -10,8 +10,6 @@ router = DefaultRouter()
 router.register(r"users", UserViewSet, basename="users")
 
 
-# apps/accounts/urls.py
-
 
 
 
