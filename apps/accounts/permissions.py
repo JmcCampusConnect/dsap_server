@@ -4,11 +4,13 @@ class IsSystemAdmin(permissions.BasePermission):
 
     """ Allows access only to SYSTEM_ADMIN users """
     def has_permission(self, request, view):
-        return (request.user and 
-                request.user.is_authenticated and 
-                hasattr(request.user, 'role') and
-                request.user.role and 
-                request.user.role.name == 'SYSTEM_ADMIN')
+        return (
+            request.user and 
+            request.user.is_authenticated and 
+            hasattr(request.user, 'role') and
+            request.user.role and 
+            request.user.role.name == 'SYSTEM_ADMIN'
+        )
 
 
 class IsOwnServiceDepartment(permissions.BasePermission):

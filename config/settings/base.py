@@ -42,13 +42,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-    # =========== NEW: Third-party apps ===========
-    'rest_framework',              # DRF core
+  
+    # Third-party
+    'rest_framework',
+    'corsheaders',
     'rest_framework_simplejwt',    # JWT handling
-    'rest_framework_simplejwt.token_blacklist',  # Blacklist support fro logout
-    'corsheaders',                # CORS handling
-    
+    'rest_framework_simplejwt.token_blacklist'
+
     # Local apps
     'common',
     'apps.accounts',
@@ -183,3 +183,24 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# ── Django REST Framework ─────────────────────────────────────────────────────
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'common.pagination.StandardPagination',
+    'PAGE_SIZE': 10,
+}
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Reads allowed origins from .env: CORS_ALLOWED_ORIGINS=http://localhost:5173
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+    if origin.strip()
+]
+CORS_ALLOW_CREDENTIALS = True

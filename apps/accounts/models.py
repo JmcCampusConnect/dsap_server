@@ -1,40 +1,69 @@
-# users/models.py
-
 from django.db import models
-from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinLengthValidator
 
-# 1. Role Model (stores user roles like Admin, Manager, User)
+
 class Role(models.Model):
-    name = models.CharField(max_length=50, unique=True, help_text="e.g., Admin, Manager, User")
+
+    id = models.BigAutoField(primary_key=True)
+    name = models.CharField(max_length=50, unique=True, null=False)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "role"
 
     def __str__(self):
         return self.name
 
-    class Meta:
-        db_table = 'accounts_role'                          # Explicit table name
 
+class User(models.Model):
 
-# 2. Custom User Model (replaces default auth.User)
-class User(AbstractUser):
-    # username and password are inherited from AbstractUser.
-    # Django stores password as a hash (password_hash internally).
-    # We add 'role_id' as a foreign key to Role.
-    role = models.ForeignKey(
-        Role,
-        on_delete=models.SET_NULL,                 # If a role is deleted, set to NULL
-        null=True,                                 # Allow null for users without a role
-        blank=True,
-        db_column='role_id'                        # Explicit column name to match task spec
+    id = models.BigAutoField(primary_key=True)
+    username = models.CharField(max_length=100,unique=True)
+
+    email = models.EmailField(
+        max_length=150,
+        unique=True,
+        null=True,
+        blank=True
     )
 
-    # Override the default groups and user_permissions if needed (optional)
-    # groups = models.ManyToManyField(...) # We'll keep default
+    password_hash = models.CharField(max_length=255)
+
+    role_id = models.ForeignKey(
+        'accounts.Role',
+        on_delete=models.RESTRICT,
+        db_column='role_id'
+    )
+
+    service_department_id = models.ForeignKey(
+        'departments.ServiceDepartment',
+        on_delete=models.RESTRICT,
+        null=True,
+        blank=True,
+        db_column='service_department_id'
+    )
+
+    academic_department_id = models.ForeignKey(
+        'departments.AcademicDepartment',
+        on_delete=models.RESTRICT,
+        null=True,
+        blank=True,
+        db_column='academic_department_id'
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    last_login = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'accounts_user'                          # Table name matches task spec
-        # username is already unique by default in AbstractUser
-        # password is NOT NULL by default
+        db_table = 'user'
 
     def __str__(self):
         return self.username
