@@ -94,7 +94,7 @@ AUTH_USER_MODEL = 'accounts.User'   # 'app_label.ModelName'
 # ── Authentication Backends ─────────────────────────────────────────────
 AUTHENTICATION_BACKENDS = [
     'common.backends.CommonUserBackend',          # your custom backend for password_hash
-    # 'django.contrib.auth.backends.ModelBackend',  # fallback
+    # 'django.contrib.auth.backends.ModelBackend',  # ! do not uncomment this
 ]
 
 # ── Django REST Framework ──────────────────────────────────────────────
