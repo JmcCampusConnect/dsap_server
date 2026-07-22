@@ -16,11 +16,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Add basic user info
         data['username'] = user.username
-        data['role'] = user.role.name if user.role else None
+        data['role'] = user.role_id.name if user.role_id else None
 
         # Include menu access list using their function
-        if user.role:
-            data['menus'] = get_accessible_menus(user.role.name)
+        if user.role_id:
+            data['menus'] = get_accessible_menus(user.role_id.name)
         else:
             data['menus'] = []
 
@@ -38,9 +38,10 @@ class LogoutSerializer(serializers.Serializer):
     
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the User model (used in UserViewSet)"""
+    role_name = serializers.CharField(source='role_id.name', read_only=True)
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'role', 'is_active', 'date_joined']
+        fields = ['id', 'username', 'email', 'role_id', 'role_name', 'is_active', 'created_at', 'last_login']
         # 'password' is excluded for security; use create_user for writing
 
 class RoleSerializer(serializers.ModelSerializer):

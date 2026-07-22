@@ -61,6 +61,17 @@ class User(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email']
+    
+    @property
+    def is_authenticated(self):
+        return True
+    
+    @property
+    def is_anonymous(self):
+        return False
 
     class Meta:
         db_table = 'user'
