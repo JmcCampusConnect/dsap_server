@@ -24,6 +24,7 @@ class Migration(migrations.Migration):
                 ('action_type', models.CharField(max_length=20)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
+                # ('responsible_role_id', models.ForeignKey(db_column='responsible_role_id', on_delete=django.db.models.deletion.RESTRICT, to='common.role')),
                 ('responsible_role_id', models.ForeignKey(db_column='responsible_role_id', on_delete=django.db.models.deletion.RESTRICT, to='accounts.role')),
                 ('service_id', models.ForeignKey(db_column='service_id', on_delete=django.db.models.deletion.CASCADE, to='services.service')),
             ],

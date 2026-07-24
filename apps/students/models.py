@@ -11,6 +11,7 @@ class Student(models.Model):
     )
 
     user_id = models.OneToOneField(
+        # 'common.User',
         'accounts.User',
         on_delete=models.RESTRICT,
         db_column='user_id'

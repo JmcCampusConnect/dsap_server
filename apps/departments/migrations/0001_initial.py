@@ -26,6 +26,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(default='ACTIVE', max_length=10)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
+                # ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='common.user')),
                 ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='accounts.user')),
             ],
             options={
@@ -41,6 +42,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(default='ACTIVE', max_length=10)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
+                # ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='common.user')),
                 ('hod_user_id', models.ForeignKey(blank=True, db_column='hod_user_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='accounts.user')),
             ],
             options={

@@ -23,6 +23,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='notification',
             name='user_id',
+            # field=models.ForeignKey(db_column='user_id', on_delete=django.db.models.deletion.RESTRICT, to='common.user'),
             field=models.ForeignKey(db_column='user_id', on_delete=django.db.models.deletion.RESTRICT, to='accounts.user'),
         ),
         migrations.AlterUniqueTogether(

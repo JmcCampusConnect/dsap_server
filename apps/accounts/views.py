@@ -9,13 +9,46 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .serializers import CustomTokenObtainPairSerializer
-from .serializers import LogoutSerializer
+from .serializers import LogoutSerializer,ResetPasswordSerializer
+from rest_framework.decorators import action
+from django.contrib.auth.hashers import make_password
 
 class UserViewSet(viewsets.ModelViewSet):
     """ User management - Only System Admin can access"""
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by("id")
+    # queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsSystemAdmin]
+    # permission_classes = [IsSystemAdmin]
+    permission_classes = [AllowAny]
+
+
+
+    def perform_destroy(self, instance):
+        """
+        Soft delete user instead of deleting from DB.
+        """
+        instance.is_active = False
+        instance.save()
+        
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request, pk=None):
+        """
+        Reset a user's password.
+        """
+        user = self.get_object()
+
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user.password_hash = make_password(
+            serializer.validated_data["password"]
+        )
+        user.save()
+
+        return Response(
+            {"message": "Password reset successfully."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class RoleViewSet(viewsets.ModelViewSet):
