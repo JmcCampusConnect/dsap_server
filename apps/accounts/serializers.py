@@ -1,9 +1,9 @@
+
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth.hashers import make_password
 from .role_constants import get_accessible_menus
 from rest_framework import serializers
-# from .models import User, Role
-from .models import Role
-from django.contrib.auth.models import User
+from .models import User, Role
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
@@ -18,11 +18,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Add basic user info
         data['username'] = user.username
-        data['role'] = user.role.name if user.role else None
+        data['role'] = user.role_id.name if user.role_id else None
 
         # Include menu access list using their function
-        if user.role:
-            data['menus'] = get_accessible_menus(user.role.name)
+        if user.role_id:
+            data['menus'] = get_accessible_menus(user.role_id.name)
         else:
             data['menus'] = []
 
@@ -37,59 +37,53 @@ class LogoutSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("Refresh token is required.")
         return value
-    
 
-class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False)
-    status = serializers.SerializerMethodField()
-
-    createdAt = serializers.DateTimeField(
-        source="date_joined",
-        read_only=True
+class ResetPasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=8
     )
+    
+    
+class UserSerializer(serializers.ModelSerializer):
+    """Serializer for the User model (used in UserViewSet)"""
+    role_name = serializers.CharField(source='role_id.name', read_only=True)
+    password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
-        fields = [
-            "id",
-            "username",
-            "password",
-            "is_active", 
-            "status",
-            "createdAt",
-        ]
-        read_only_fields = ["id","status", "createdAt"]
-
-    def get_status(self, obj):
-        return "Active" if obj.is_active else "Inactive"
-
-
-    def validate_username(self, value):
-        queryset = User.objects.filter(username=value)
-
-        if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
-
-        if queryset.exists():
-            raise serializers.ValidationError("Username already exists.")
-
-        return value
+        fields = ['id', 'username', 'email', 'password', 'role_id', 'role_name', 'is_active', 'created_at', 'last_login']
+        # 'password' is excluded for security; use create_user for writing
+        read_only_fields = ["id","created_at","last_login"]
 
     def create(self, validated_data):
-        print(validated_data)   # <-- add this line
+           password = validated_data.pop("password")
 
-        password = validated_data.pop("password")
+           if not password:
+               raise serializers.ValidationError({
+                   "password": "This field is required."
+               })
 
-        user = User(**validated_data)
-        user.set_password(password)  # Hashes the password
-        user.save()
+           user = User.objects.create(
+                password_hash=make_password(password),
+                **validated_data
+            )
 
-        return user
+           return user
 
+    
     def update(self, instance, validated_data):
-        validated_data.pop("password", None)
+        password = validated_data.pop("password", None)
 
-        return super().update(instance, validated_data)
+        # Update all other fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        return instance
+
+    
 
 class RoleSerializer(serializers.ModelSerializer):
     """Serializer for the Role model (used in RoleViewSet)"""
