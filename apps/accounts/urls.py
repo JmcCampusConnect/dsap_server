@@ -1,11 +1,12 @@
 from django.urls import path,include
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, LoginView, LogoutView
+from .views import UserViewSet, LoginView, LogoutView, RoleViewSet
 
 
 router = DefaultRouter()
 router.register(r"users", UserViewSet, basename="users")
+router.register(r"roles", RoleViewSet, basename="roles")
 
 app_name = 'accounts'
 
