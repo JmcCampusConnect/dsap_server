@@ -12,31 +12,32 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Notification',
+            name='Role',
             fields=[
                 ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('channel', models.CharField(max_length=10)),
-                ('status', models.CharField(default='QUEUED', max_length=20)),
-                ('sent_at', models.DateTimeField(blank=True, null=True)),
+                ('name', models.CharField(max_length=50, unique=True)),
+                ('description', models.TextField(blank=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
             ],
             options={
-                'db_table': 'notification',
+                'db_table': 'role',
             },
         ),
         migrations.CreateModel(
-            name='NotificationTemplate',
+            name='User',
             fields=[
                 ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('event_code', models.CharField(max_length=40)),
-                ('channel', models.CharField(max_length=10)),
-                ('template_body', models.TextField()),
+                ('username', models.CharField(max_length=100, unique=True)),
+                ('email', models.EmailField(blank=True, max_length=150, null=True, unique=True)),
+                ('password_hash', models.CharField(max_length=255)),
+                ('is_active', models.BooleanField(default=True)),
+                ('last_login', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
             ],
             options={
-                'db_table': 'notification_template',
+                'db_table': 'user',
             },
         ),
     ]
