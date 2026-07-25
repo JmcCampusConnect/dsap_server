@@ -1,10 +1,15 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from apps.departments.views.academic_department import AcademicDepartmentViewSet
+
+from .views import ServiceDepartmentViewSet
 
 router = DefaultRouter()
-router.register(r'academic-departments', AcademicDepartmentViewSet, basename='academic-department')
+router.register(
+    r"service-departments",
+    ServiceDepartmentViewSet,
+    basename="service-department",
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]
