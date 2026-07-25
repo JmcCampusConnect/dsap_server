@@ -4,11 +4,14 @@ from django.urls import include, path
 
 urlpatterns = [
 
-    # Accounts API
-    path('api/', include('apps.accounts.urls')),
+    # Admin
     path('admin/', admin.site.urls),
-    path("api/v1/", include("apps.departments.urls")),
-    path('api/accounts/', include('apps.accounts.urls')),
-    path('api/', include('apps.departments.urls')),
-    path('api/users/', include('common.urls')),
+
+    # Accounts 
+    path("api/auth/", include("apps.accounts.urls.auth")),
+    path("api/users/", include("apps.accounts.urls.user")),
+
+    # Departments
+    path("api/service-departments/",include("apps.departments.urls.service_department"),),
+    path("api/academic-departments/",include("apps.departments.urls.academic_department")),
 ]
