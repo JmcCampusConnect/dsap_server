@@ -1,6 +1,6 @@
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.hashers import check_password
-from common.models import User
+from apps.accounts.models import User
 
 class CommonUserBackend(ModelBackend):
     def authenticate(self, request, username=None, password=None, **kwargs):

@@ -3,7 +3,7 @@ from typing import Any
 from django.contrib.auth.hashers import make_password
 
 try:
-    from common.models import Role, User
+    from apps.accounts.models import Role, User
     HAS_MODEL = True
 except Exception as exc:  
     Role = User = None

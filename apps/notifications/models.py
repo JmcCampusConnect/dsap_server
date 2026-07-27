@@ -12,6 +12,7 @@ class Notification(models.Model):
     )
 
     user_id = models.ForeignKey(
+        # "common.User",
         "accounts.User",
         on_delete=models.RESTRICT,
         db_column="user_id"

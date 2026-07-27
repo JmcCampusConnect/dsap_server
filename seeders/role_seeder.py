@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any
 
 try:
-    from common.models import Role
+    from apps.accounts.models import Role
     HAS_MODEL = True
 except Exception as exc:
     Role = None
