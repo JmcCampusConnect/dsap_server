@@ -14,4 +14,7 @@ urlpatterns = [
     # Departments
     path("api/service-departments/",include("apps.departments.urls.service_department"),),
     path("api/academic-departments/",include("apps.departments.urls.academic_department")),
+
+    # Services
+    path("api/services/", include("apps.services.urls")),
 ]
