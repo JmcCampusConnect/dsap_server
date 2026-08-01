@@ -2,9 +2,8 @@ from rest_framework.permissions import BasePermission
 
 
 class IsServiceDepartmentAdmin(BasePermission):
-    """
-    Allows access only to users with the SERVICE_DEPT_ADMIN role.
-    """
+    
+    """Allows access only to users with the SERVICE_DEPT_ADMIN role """
 
     message = "Only Service Department Admins can perform this action."
 

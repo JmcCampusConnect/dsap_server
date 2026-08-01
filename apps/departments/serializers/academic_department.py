@@ -3,6 +3,7 @@ from apps.departments.models import AcademicDepartment
 
 
 class AcademicDepartmentSerializer(serializers.ModelSerializer):
+    
     type = serializers.CharField(max_length=100)
     category = serializers.CharField(max_length=100)
 
