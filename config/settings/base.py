@@ -3,11 +3,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-default')
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        'SECRET_KEY environment variable is not set. Refusing to start with an insecure default.'
+    )
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = [
@@ -89,6 +94,15 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'common.pagination.StandardPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/min',
+        'user': '60/min',
+        'login': '5/min',
+    },
 }
 
 SIMPLE_JWT = {
