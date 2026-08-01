@@ -18,6 +18,7 @@ SEEDERS = [
     "role_seeder",
     "user_seeder",
     "academic_department_seeder",
+    "service_management_seeder",
 ]
 
 
