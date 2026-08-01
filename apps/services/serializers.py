@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.services.models import Service
+from apps.services.models import Service, ServiceDocument
 from apps.departments.models import ServiceDepartment
 
 
@@ -42,3 +42,17 @@ class ServiceSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "service_department_id": {"write_only": True},
         }
+
+class ServiceDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceDocument
+        fields = [
+            "id",
+            "service_id",
+            "document_name",
+            "is_mandatory",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "service_id", "created_at", "updated_at"]
+

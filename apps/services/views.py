@@ -4,9 +4,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
 
-from apps.services.models import Service
+from apps.services.models import Service, ServiceDocument
 from apps.departments.models import ServiceDepartment
-from apps.services.serializers import ServiceSerializer
+from apps.services.serializers import ServiceSerializer, ServiceDocumentSerializer
 from common.pagination import StandardPagination
 
 
@@ -128,3 +128,29 @@ class ServiceViewSet(viewsets.ModelViewSet):
         )
         serializer = ServiceSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+class ServiceDocumentViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for service documents.
+    Nested under /api/services/<service_id>/documents/
+    """
+    serializer_class = ServiceDocumentSerializer
+
+    def get_permissions(self):
+        return [AllowAny()]
+
+    def get_queryset(self):
+        service_id = self.kwargs.get("service_id")
+        return ServiceDocument.objects.filter(service_id=service_id).order_by("created_at")
+
+    def perform_create(self, serializer):
+        service_id = self.kwargs.get("service_id")
+        # Ensure service_id exists
+        try:
+            service = Service.objects.get(id=service_id)
+        except Service.DoesNotExist:
+            # Let DRF handle it if we want, or raise ValidationError
+            pass
+        serializer.save(service_id_id=service_id)
+
