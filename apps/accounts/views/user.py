@@ -1,7 +1,7 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from ..models import User
 from ..serializers import (
@@ -13,7 +13,7 @@ from ..serializers import (
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("id")
     serializer_class = UserSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def perform_destroy(self, instance):
         instance.is_active = False
