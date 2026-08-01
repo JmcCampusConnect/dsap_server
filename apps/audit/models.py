@@ -18,13 +18,10 @@ class AuditLog(models.Model):
     model_name = models.CharField(max_length=100, blank=True, null=True)
     object_id = models.CharField(max_length=100, blank=True, null=True)
     object_repr = models.CharField(max_length=200, blank=True)
-    
     action = models.CharField(max_length=10, choices=ACTION_CHOICES)
     changes = models.JSONField(default=dict, blank=True)
-    
     user_id = models.CharField(max_length=100, blank=True, null=True)
     user_name = models.CharField(max_length=200, blank=True, null=True)
-    
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     request_path = models.CharField(max_length=500, blank=True)
