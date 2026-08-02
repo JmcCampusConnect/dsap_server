@@ -5,7 +5,12 @@ from rest_framework.permissions import AllowAny
 from django.db.models import Q
 from apps.departments.models import AcademicDepartment
 from apps.departments.serializers.academic_department import AcademicDepartmentSerializer
+from apps.accounts.models import User
 from common.pagination import StandardPagination
+import openpyxl
+from django.http import HttpResponse
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db import transaction
 from apps.audit.models import AuditLog
 
 
@@ -71,11 +76,13 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         snapshot = self.get_serializer(instance).data
+        object_id = instance.pk
         instance.delete()
         AuditLog.log(
             request=request,
             action='DELETE',
             obj=instance,
+            object_id=object_id,
             changes=snapshot
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -99,3 +106,155 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "degrees": [{"value": x, "label": x} for x in degrees],
             "branches": [{"value": x, "label": x} for x in branches],
         })
+
+    @action(detail=False, methods=['get'], url_path='export')
+    def export_excel(self, request):
+        qs = self.get_queryset().select_related('hod_user_id')
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Academic Departments"
+        
+        headers = ["Code", "Name", "Degree", "Branch", "Type", "Category", "HOD Username"]
+        ws.append(headers)
+        
+        for dept in qs:
+            hod_username = dept.hod_user_id.username if dept.hod_user_id else ""
+            ws.append([
+                dept.code,
+                dept.name,
+                dept.degree,
+                dept.branch,
+                dept.type,
+                dept.category,
+                hod_username
+            ])
+            
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=academic_departments.xlsx'
+        wb.save(response)
+        
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import', parser_classes=[MultiPartParser, FormParser])
+    def import_excel(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(file, data_only=True)
+            ws = wb.active
+        except Exception:
+            return Response({"error": "Invalid Excel file format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
+
+        headers = [str(h).strip() for h in rows[0] if h is not None]
+        expected_headers = ["Code", "Name", "Degree", "Branch", "Type", "Category", "HOD Username"]
+        
+        if len(headers) < len(expected_headers) or headers[:len(expected_headers)] != expected_headers:
+            return Response({
+                "error": f"Invalid headers. Expected: {', '.join(expected_headers)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        errors = []
+        valid_departments = []
+        db_existing_codes = set(AcademicDepartment.objects.values_list('code', flat=True))
+        seen_codes_in_file = set()
+
+        for row_idx, row in enumerate(rows[1:], start=2):
+            if not any(row):
+                continue
+                
+            code = str(row[0]).strip().upper() if row[0] is not None else ""
+            name = str(row[1]).strip() if row[1] is not None else ""
+            degree = str(row[2]).strip() if row[2] is not None else ""
+            branch = str(row[3]).strip() if row[3] is not None else ""
+            dept_type = str(row[4]).strip() if row[4] is not None else ""
+            category = str(row[5]).strip() if row[5] is not None else ""
+            hod_username = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ""
+
+            row_errors = []
+            if not code:
+                row_errors.append("Department Code is required.")
+            elif len(code) > 20:
+                row_errors.append("Department Code cannot exceed 20 characters.")
+            elif code in db_existing_codes:
+                row_errors.append(f"Department Code '{code}' already exists.")
+            elif code in seen_codes_in_file:
+                row_errors.append(f"Duplicate Department Code '{code}' found within the uploaded Excel file.")
+            else:
+                seen_codes_in_file.add(code)
+
+            if not name:
+                row_errors.append("Department Name is required.")
+            elif len(name) > 150:
+                row_errors.append("Department Name exceeds the maximum allowed length.")
+
+            if not degree:
+                row_errors.append("Degree is required.")
+            elif len(degree) > 50:
+                row_errors.append("Degree exceeds the maximum allowed length.")
+
+            if not branch:
+                row_errors.append("Branch is required.")
+            elif len(branch) > 100:
+                row_errors.append("Branch exceeds the maximum allowed length.")
+
+            if not dept_type:
+                row_errors.append("Type is required.")
+            elif len(dept_type) > 100:
+                row_errors.append("Type exceeds the maximum allowed length.")
+
+            if not category:
+                row_errors.append("Category is required.")
+            elif len(category) > 100:
+                row_errors.append("Category exceeds the maximum allowed length.")
+
+            hod_user_obj = None
+            if hod_username:
+                try:
+                    user = User.objects.get(username=hod_username)
+                    if user.role_id_id != 4:
+                        row_errors.append(f"User '{hod_username}' is not a Subject Teaching Staff.")
+                    else:
+                        hod_user_obj = user
+                except User.DoesNotExist:
+                    row_errors.append(f"HOD username '{hod_username}' does not exist.")
+
+            if row_errors:
+                errors.append({"row": row_idx, "errors": row_errors})
+            else:
+                valid_departments.append(AcademicDepartment(
+                    code=code,
+                    name=name,
+                    degree=degree,
+                    branch=branch,
+                    type=dept_type,
+                    category=category,
+                    hod_user_id=hod_user_obj
+                ))
+
+        if errors:
+            return Response({
+                "error": "Validation failed for some rows",
+                "details": errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            AcademicDepartment.objects.bulk_create(valid_departments)
+            AuditLog.log(
+                request=request,
+                action='IMPORT',
+                obj=AcademicDepartment,
+                object_id='BULK_IMPORT',
+                object_repr='Imported Academic Departments',
+                changes={"imported_count": len(valid_departments)}
+            )
+
+        return Response({
+            "message": f"Successfully imported {len(valid_departments)} departments"
+        }, status=status.HTTP_201_CREATED)
