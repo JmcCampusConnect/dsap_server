@@ -20,7 +20,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     """
 
     service_department = ServiceDepartmentRefSerializer(
-        source="service_department", 
+        source="service_department_id", 
         read_only=True,
     )
 

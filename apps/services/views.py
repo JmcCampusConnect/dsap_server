@@ -36,7 +36,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     # ── QuerySet ─────────────────────────────────────────────────
     def get_queryset(self):
-        qs = Service.objects.select_related("service_department").order_by(
+        qs = Service.objects.select_related("service_department_id").order_by(
             "-created_at"
         )
 
@@ -124,10 +124,10 @@ class ServiceViewSet(viewsets.ModelViewSet):
         })
 
     # ── Public directory (active only) ───────────────────────────
-    @action(detail=False, methods=["get"], url_path="public")
+    @action(detail=False, methods=["get"], url_path="public") 
     def public_list(self, request):
         qs = (
-            Service.objects.select_related("service_department")
+            Service.objects.select_related("service_department_id")
             .filter(status="ACTIVE")
             .order_by("service_department__name", "code")
         )
