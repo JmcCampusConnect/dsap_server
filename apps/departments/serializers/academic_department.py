@@ -10,10 +10,17 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = AcademicDepartment
         fields = [
-            "id", "code", "name", "degree", "branch", "type", "category", 
-            "hod_user_id", "status", "created_at", "updated_at"
+            "id", "code", "stream", "degree", "branch", "type", "category", 
+            "status", "created_at", "updated_at"
         ]
         read_only_fields = ["id", "status", "created_at", "updated_at"]
+
+    def validate_stream(self, value):
+        value = value.strip()
+        allowed = ['SFM', 'SFW', 'Aided']
+        if value not in allowed:
+            raise serializers.ValidationError(f"Stream must be one of: {', '.join(allowed)}.")
+        return value
 
     def validate_type(self, value):
         value = value.strip()
