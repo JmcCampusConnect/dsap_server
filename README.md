@@ -243,6 +243,26 @@ Each domain lives in its own app under `apps/`, following the same internal layo
 - `urls.py` — router registration for this app
 - `tests/` — unit tests for this app's models, serializers, and views
 
+### Academic Department Schema Specification
+
+The `AcademicDepartment` model (`academic_department` table) manages academic degree program offerings across institutional streams:
+
+| Field Name | Type | Constraints | Description & Values |
+| --- | --- | --- | --- |
+| `id` | BigAutoField | Primary Key | Auto-incrementing primary key |
+| `code` | CharField(20) | NOT NULL | Department code (e.g. `MCA`, `BCA`, `UCO`) |
+| `stream` | CharField(10) | NOT NULL, Choice | **Allowed values**: `SFM`, `SFW`, `Aided` |
+| `degree` | CharField(50) | NOT NULL | Degree title (e.g. `M.C.A.`, `B.Sc.`, `B.A.`) |
+| `branch` | CharField(100) | NOT NULL | Branch / Specialization (e.g. `COMPUTER APPLICATIONS`) |
+| `type` | CharField(100) | NOT NULL | Program level (e.g. `UG`, `PG`) |
+| `category` | CharField(100) | NOT NULL | Discipline (`ARTS`, `SCIENCE`) |
+| `status` | CharField(10) | Default `'ACTIVE'` | Status (`ACTIVE`, `INACTIVE`) |
+| `created_at` | DateTimeField | auto_now_add | Creation timestamp |
+| `updated_at` | DateTimeField | auto_now | Modification timestamp |
+
+- **Uniqueness Constraint**: `unique_together = ('code', 'stream')`
+- **Removed Fields**: Legacy `name`, `hod_username`, and `hod_user_id` fields are completely removed from `academic_department`.
+
 ### Model Conventions
 
 ```python
