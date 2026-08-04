@@ -46,6 +46,9 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_status(self, value):
+        return value.lower()
+
     def create(self, validated_data):
         department = ServiceDepartment.objects.create(**validated_data)
 
