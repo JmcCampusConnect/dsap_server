@@ -14,7 +14,7 @@ class ServiceDepartment(models.Model):
         blank=True,
         db_column='hod_user_id'
     )
-    status = models.CharField(max_length=10, default='ACTIVE')
+    status = models.CharField(max_length=10, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
