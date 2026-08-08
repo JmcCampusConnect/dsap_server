@@ -1,16 +1,18 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
-from django.db.models import Q
-from apps.departments.models import AcademicDepartment
-from apps.departments.serializers.academic_department import AcademicDepartmentSerializer
-from apps.accounts.models import User
-from common.pagination import StandardPagination
-import openpyxl
-from django.http import HttpResponse
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
+from django.http import HttpResponse
+from django.db.models import Q
+import openpyxl
+from apps.departments.models import AcademicDepartment
+from apps.departments.serializers import AcademicDepartmentSerializer
+from apps.accounts.models import User
+from apps.accounts.permissions import IsSystemAdmin
+from apps.accounts.role_constants import Roles
+from common.pagination import StandardPagination
 from apps.audit.models import AuditLog
 
 
@@ -18,9 +20,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
     serializer_class = AcademicDepartmentSerializer
     pagination_class = StandardPagination
-
-    def get_permissions(self):
-        return [AllowAny()]
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get_queryset(self):
         qs = AcademicDepartment.objects.exclude(status="INACTIVE").order_by("code")
@@ -218,7 +218,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             if hod_username:
                 try:
                     user = User.objects.get(username=hod_username)
-                    if user.role_id_id != 4:
+                    if user.role_id_id != Roles.SUBJECT_TEACHING_STAFF:
                         row_errors.append(f"User '{hod_username}' is not a Subject Teaching Staff.")
                     else:
                         hod_user_obj = user
