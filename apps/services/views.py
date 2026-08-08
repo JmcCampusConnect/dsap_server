@@ -3,10 +3,15 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
-from apps.services.models import Service
+from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
-from apps.services.serializers import ServiceSerializer
+from apps.services.serializers import (
+    ServiceSerializer, 
+    ServiceFieldSerializer, 
+    ServiceDocumentSerializer
+)
 from common.pagination import StandardPagination
 
 
@@ -40,7 +45,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             qs = qs.filter(
                 Q(code__icontains=search)
                 | Q(name__icontains=search)
-                | Q(service_department_id__name__icontains=search)
+                | Q(service_department__name__icontains=search)
             )
 
         status_filter = self.request.query_params.get("status", "").strip()
@@ -119,12 +124,146 @@ class ServiceViewSet(viewsets.ModelViewSet):
         })
 
     # ── Public directory (active only) ───────────────────────────
-    @action(detail=False, methods=["get"], url_path="public")
+    @action(detail=False, methods=["get"], url_path="public") 
     def public_list(self, request):
         qs = (
             Service.objects.select_related("service_department_id")
             .filter(status="ACTIVE")
-            .order_by("service_department_id__name", "code")
+            .order_by("service_department__name", "code")
         )
         serializer = ServiceSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+class ServiceFieldViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for service fields (Admin only).
+    Routes are nested under /api/services/{service_id}/fields/
+    """
+    serializer_class = ServiceFieldSerializer
+    pagination_class = StandardPagination
+
+    def get_permissions(self):
+        # TODO: Replace with proper admin permissions
+        return [AllowAny()]
+
+    def get_queryset(self):
+        """Get fields for a specific service"""
+        service_id = self.kwargs.get("service_id")
+        if not service_id:
+            return ServiceField.objects.none()
+        return ServiceField.objects.filter(service_id=service_id).order_by("display_order", "id")
+
+    def perform_create(self, serializer):
+        """Create a new field with auto-incrementing display_order"""
+        service_id = self.kwargs.get("service_id")
+        service = get_object_or_404(Service, id=service_id)
+        
+        # Calculate next display order if not provided
+        display_order = serializer.validated_data.get("display_order", 0)
+        if display_order == 0:
+            last_field = ServiceField.objects.filter(service_id=service_id).order_by("-display_order").first()
+            display_order = (last_field.display_order + 1) if last_field else 1
+        
+        serializer.save(service_id=service, display_order=display_order)
+
+    @action(detail=False, methods=["patch"], url_path="reorder")
+    def reorder(self, request, service_id=None):
+        """
+        Expects a list of objects with { id: <int>, display_order: <int> }
+        """
+        fields_data = request.data
+        if not isinstance(fields_data, list):
+            return Response(
+                {"detail": "Expected a list of field orders"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        updated_fields = []
+        errors = []
+        
+        for item in fields_data:
+            field_id = item.get("id")
+            display_order = item.get("display_order")
+            
+            if field_id is None or display_order is None:
+                errors.append(f"Missing id or display_order for item: {item}")
+                continue
+                
+            try:
+                field = ServiceField.objects.get(id=field_id, service_id=service_id)
+                field.display_order = display_order
+                updated_fields.append(field)
+            except ServiceField.DoesNotExist:
+                errors.append(f"Field with id {field_id} not found in this service")
+                continue
+        
+        if errors:
+            return Response(
+                {"detail": "Some fields could not be updated", "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Bulk update
+        if updated_fields:
+            ServiceField.objects.bulk_update(updated_fields, ["display_order"])
+            
+        return Response(
+            {"detail": "Reordered successfully", "updated": len(updated_fields)},
+            status=status.HTTP_200_OK
+        )
+
+
+class ServiceDocumentViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for service documents.
+    Nested under /api/services/<service_id>/documents/
+    """
+    serializer_class = ServiceDocumentSerializer
+    pagination_class = StandardPagination
+
+    def get_permissions(self):
+        # TODO: Replace with proper admin permissions
+        return [AllowAny()]
+
+    def get_queryset(self):
+        """Get documents for a specific service"""
+        service_id = self.kwargs.get("service_id")
+        if not service_id:
+            return ServiceDocument.objects.none()
+        return ServiceDocument.objects.filter(service_id=service_id).order_by("created_at")
+
+    def perform_create(self, serializer):
+        """Create a new document for a service"""
+        service_id = self.kwargs.get("service_id")
+        service = get_object_or_404(Service, id=service_id)
+        serializer.save(service_id=service)
+
+    def perform_update(self, serializer):
+        """Update a document"""
+        service_id = self.kwargs.get("service_id")
+        # Ensure the document belongs to the correct service
+        instance = self.get_object()
+        if str(instance.service_id) != str(service_id):
+            raise serializers.ValidationError(
+                "Document does not belong to this service"
+            )
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a document"""
+        instance = self.get_object()
+        service_id = self.kwargs.get("service_id")
+        
+        # Ensure the document belongs to the correct service
+        if str(instance.service_id) != str(service_id):
+            return Response(
+                {"detail": "Document does not belong to this service"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        instance.delete()
+        return Response(
+            {"detail": "Document deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )

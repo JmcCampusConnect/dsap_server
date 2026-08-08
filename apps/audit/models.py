@@ -12,6 +12,7 @@ class AuditLog(models.Model):
         ('LOGOUT', 'Logout'),
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
+        ('IMPORT', 'Import'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)
@@ -42,28 +43,37 @@ class AuditLog(models.Model):
         return f"{self.action} - {self.object_repr} - {self.created_at}"
 
     @classmethod
-    def log(cls, request, action, obj, object_repr='', changes=None):
-        app_label = ''
-        model_name = ''
-        object_id = ''
-        
+    def log(cls, request, action, obj=None, object_repr='', changes=None, object_id=None, app_label='', model_name=''):
+        resolved_app_label = app_label or ''
+        resolved_model_name = model_name or ''
+        resolved_object_id = str(object_id) if object_id is not None else ''
+        resolved_object_repr = object_repr or ''
+
         if obj:
-            app_label = obj._meta.app_label
-            model_name = obj.__class__.__name__
-            object_id = str(obj.pk)
-            if not object_repr:
-                object_repr = str(obj)
-                
+            if hasattr(obj, '_meta'):
+                if not resolved_app_label:
+                    resolved_app_label = obj._meta.app_label
+                if not resolved_model_name:
+                    resolved_model_name = obj._meta.object_name
+
+            if isinstance(obj, models.Model):
+                if object_id is None and obj.pk is not None:
+                    resolved_object_id = str(obj.pk)
+                if not resolved_object_repr:
+                    resolved_object_repr = str(obj)
+            elif not resolved_object_repr and hasattr(obj, '_meta'):
+                resolved_object_repr = f"Bulk {action.title()} {obj._meta.verbose_name_plural.title()}"
+
         audit_data = {
-            'app_label': app_label,
-            'model_name': model_name,
-            'object_id': object_id,
-            'object_repr': object_repr,
+            'app_label': resolved_app_label,
+            'model_name': resolved_model_name,
+            'object_id': resolved_object_id,
+            'object_repr': resolved_object_repr,
             'action': action,
             'changes': changes or {},
             'ip_address': cls._get_client_ip(request),
-            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
-            'request_path': request.path,
+            'user_agent': request.META.get('HTTP_USER_AGENT', '') if request else '',
+            'request_path': request.path if request else '',
         }
         
         if request and hasattr(request, 'user') and request.user.is_authenticated:
