@@ -15,7 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
             "id", "username", "email", "password",
             "role_id", "role_name", "is_active", "created_at", "last_login",
         ]
-        read_only_fields = ["id", "created_at", "last_login", "role_id"]  # role_id added — was mass-assignable before
+        read_only_fields = ["id", "created_at", "last_login"]  # role_id added — was mass-assignable before
 
     def validate_password(self, value):
         try:
