@@ -56,6 +56,12 @@ class ServiceField(models.Model):
         blank=True
     )
 
+    conditional_logic = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Controls when this field is visible."
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -64,7 +70,6 @@ class ServiceField(models.Model):
 
     def __str__(self):
         return self.field_label
-
 
 class ServiceDocument(models.Model):
 

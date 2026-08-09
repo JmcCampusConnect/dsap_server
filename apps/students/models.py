@@ -3,6 +3,11 @@ from django.db import models
 
 class Student(models.Model):
     
+    class StreamChoices(models.TextChoices):
+        SFM = 'SFM', 'SFM'
+        SFW = 'SFW', 'SFW'
+        AIDED = 'AIDED', 'Aided'
+
     id = models.BigAutoField(primary_key=True)
 
     register_number = models.CharField(
@@ -10,8 +15,16 @@ class Student(models.Model):
         unique=True
     )
 
+    name = models.CharField(
+        max_length=100
+    )
+
+    dob = models.DateField(
+        null=True,
+        blank=True
+    )
+
     user_id = models.OneToOneField(
-        # 'common.User',
         'accounts.User',
         on_delete=models.RESTRICT,
         db_column='user_id'
@@ -31,64 +44,13 @@ class Student(models.Model):
         blank=True
     )
 
-    stream = models.CharField(max_length=10)
-
-    mobile_number = models.CharField(max_length=15)
-
-    religion = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True
-    )
-
-    aadhar_no = models.CharField(
-        max_length=12,
-        unique=True,
-        null=True,
-        blank=True
-    )
-
-    door_no = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True
-    )
-
-    area_name = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-
-    district = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-
-    state = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-
-    pincode = models.CharField(
+    stream = models.CharField(
         max_length=10,
-        null=True,
-        blank=True
+        choices=StreamChoices.choices,
+        default=StreamChoices.SFM
     )
-
-    parent_name = models.CharField(
-        max_length=150,
-        null=True,
-        blank=True
-    )
-
-    parent_number = models.CharField(
-        max_length=15,
-        null=True,
-        blank=True
-    )
+    
+    mobile_number = models.CharField(max_length=15)
 
     status = models.CharField(
         max_length=10,
@@ -96,7 +58,6 @@ class Student(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
-
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

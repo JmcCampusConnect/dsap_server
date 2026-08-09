@@ -1,26 +1,26 @@
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
-from django.db.models import Q
-from apps.departments.models import AcademicDepartment
-from apps.departments.serializers.academic_department import AcademicDepartmentSerializer
-from apps.accounts.models import User
-from common.pagination import StandardPagination
 import openpyxl
-from django.http import HttpResponse
-from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
+from django.db.models import Q
+from django.http import HttpResponse
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from apps.accounts.models import User
+from apps.accounts.permissions import IsSystemAdmin
+from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
+from apps.departments.models import AcademicDepartment
+from apps.departments.serializers import AcademicDepartmentSerializer
+from common.pagination import StandardPagination
 
 
 class AcademicDepartmentViewSet(viewsets.ModelViewSet):
-
     serializer_class = AcademicDepartmentSerializer
     pagination_class = StandardPagination
-
-    def get_permissions(self):
-        return [AllowAny()]
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get_queryset(self):
         qs = AcademicDepartment.objects.exclude(status="INACTIVE").order_by("code")
@@ -162,28 +162,28 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='export')
     def export_excel(self, request):
         qs = self.get_queryset()
-        
+
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Academic Departments"
-        
-        headers = ["Stream", "Type", "Category", "Degree", "Branch", "Code"]
+
+        headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
         ws.append(headers)
-        
+
         for dept in qs:
             ws.append([
+                dept.code,
                 dept.stream,
-                dept.type,
-                dept.category,
                 dept.degree,
                 dept.branch,
-                dept.code,
+                dept.type,
+                dept.category,
             ])
-            
+
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=academic_departments.xlsx'
         wb.save(response)
-        
+
         return response
 
     def _extract_header_map(self, header_row):
@@ -242,6 +242,9 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "total": 0
         }
 
+        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
+        allowed_streams = {'SFM', 'SFW', 'Aided'}
+
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
                 continue
@@ -249,7 +252,8 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
 
             code = get_val("code").upper()
-            stream = get_val("stream")
+            raw_stream = get_val("stream")
+            stream = stream_map.get(raw_stream.upper(), raw_stream)
             degree = get_val("degree")
             branch = get_val("branch")
             dept_type = get_val("type")
@@ -273,8 +277,10 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             elif len(code) > 20:
                 row_errors.append("Department Code exceeds 20 characters.")
 
-            if not stream:
+            if not raw_stream:
                 row_errors.append("Stream is required.")
+            elif stream not in allowed_streams:
+                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
 
             if not degree:
                 row_errors.append("Degree is required.")
@@ -304,7 +310,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 summary["invalid"] += 1
             else:
                 pair = (code, stream.lower())
-                if (code, stream.lower()) in db_existing_lower:
+                if pair in db_existing_lower:
                     row_data["status"] = "ALREADY EXISTS"
                     row_data["errors"] = [f"Department Code '{code}' with Stream '{stream}' already exists in database."]
                     summary["already_exists"] += 1
@@ -408,6 +414,8 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         valid_departments = []
         db_existing_pairs = set((c.upper(), s.lower()) for c, s in AcademicDepartment.objects.values_list('code', 'stream'))
         seen_pairs_in_file = set()
+        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
+        allowed_streams = {'SFM', 'SFW', 'Aided'}
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
@@ -416,15 +424,18 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
 
             code = get_val("code").upper()
-            stream = get_val("stream")
+            raw_stream = get_val("stream")
+            stream = stream_map.get(raw_stream.upper(), raw_stream)
             degree = get_val("degree")
             branch = get_val("branch")
             dept_type = get_val("type")
             category = get_val("category")
 
             row_errors = []
-            if not stream:
+            if not raw_stream:
                 row_errors.append("Stream is required.")
+            elif stream not in allowed_streams:
+                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
 
             pair = (code, stream.lower())
             if not code:
@@ -489,4 +500,4 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
         return Response({
             "message": f"Successfully imported {len(created_objs)} departments"
-        }, status=status.HTTP_201_CREATED)
+        }, status=status.HTTP_201_CREATED)

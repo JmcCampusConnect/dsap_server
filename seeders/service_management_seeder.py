@@ -51,6 +51,13 @@ SERVICES = [
         "base_fee": 100,
         "sla_days": 5,
     },
+    {
+        "code": "COE-003",
+        "name": "Name / DOB Correction",
+        "dept_code": "COE",
+        "base_fee": 250,
+        "sla_days": 5,
+    },
 ]
 
 
