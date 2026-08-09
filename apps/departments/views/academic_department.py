@@ -29,14 +29,14 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if search:
             qs = qs.filter(
                 Q(code__icontains=search)
-                | Q(name__icontains=search)
+                | Q(stream__icontains=search)
                 | Q(degree__icontains=search)
                 | Q(branch__icontains=search)
                 | Q(type__icontains=search)
                 | Q(category__icontains=search)
             )
 
-        for field in ("code", "name", "degree", "branch", "type", "category"):
+        for field in ("code", "stream", "degree", "branch", "type", "category"):
             val = self.request.query_params.get(field, "").strip()
             if val:
                 qs = qs.filter(**{field: val})
@@ -94,7 +94,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         types = list(base_qs.exclude(type="").values_list("type", flat=True).distinct())
         categories = list(base_qs.exclude(category="").values_list("category", flat=True).distinct())
         codes = list(base_qs.exclude(code="").values_list("code", flat=True).distinct())
-        names = list(base_qs.exclude(name="").values_list("name", flat=True).distinct())
+        streams = list(base_qs.exclude(stream="").values_list("stream", flat=True).distinct())
         degrees = list(base_qs.exclude(degree="").values_list("degree", flat=True).distinct())
         branches = list(base_qs.exclude(branch="").values_list("branch", flat=True).distinct())
         
@@ -102,32 +102,30 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "types": [{"value": x, "label": x} for x in types],
             "categories": [{"value": x, "label": x} for x in categories],
             "codes": [{"value": x, "label": x} for x in codes],
-            "names": [{"value": x, "label": x} for x in names],
+            "streams": [{"value": x, "label": x} for x in streams],
             "degrees": [{"value": x, "label": x} for x in degrees],
             "branches": [{"value": x, "label": x} for x in branches],
         })
 
     @action(detail=False, methods=['get'], url_path='export')
     def export_excel(self, request):
-        qs = self.get_queryset().select_related('hod_user_id')
+        qs = self.get_queryset()
         
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Academic Departments"
         
-        headers = ["Code", "Name", "Degree", "Branch", "Type", "Category", "HOD Username"]
+        headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
         ws.append(headers)
         
         for dept in qs:
-            hod_username = dept.hod_user_id.username if dept.hod_user_id else ""
             ws.append([
                 dept.code,
-                dept.name,
+                dept.stream,
                 dept.degree,
                 dept.branch,
                 dept.type,
                 dept.category,
-                hod_username
             ])
             
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -153,7 +151,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
 
         headers = [str(h).strip() for h in rows[0] if h is not None]
-        expected_headers = ["Code", "Name", "Degree", "Branch", "Type", "Category", "HOD Username"]
+        expected_headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
         
         if len(headers) < len(expected_headers) or headers[:len(expected_headers)] != expected_headers:
             return Response({
@@ -162,37 +160,40 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
         errors = []
         valid_departments = []
-        db_existing_codes = set(AcademicDepartment.objects.values_list('code', flat=True))
-        seen_codes_in_file = set()
+        db_existing_pairs = set(AcademicDepartment.objects.values_list('code', 'stream'))
+        seen_pairs_in_file = set()
+        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
+        allowed_streams = {'SFM', 'SFW', 'Aided'}
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
                 continue
                 
             code = str(row[0]).strip().upper() if row[0] is not None else ""
-            name = str(row[1]).strip() if row[1] is not None else ""
+            raw_stream = str(row[1]).strip() if row[1] is not None else ""
+            stream = stream_map.get(raw_stream.upper(), raw_stream)
             degree = str(row[2]).strip() if row[2] is not None else ""
             branch = str(row[3]).strip() if row[3] is not None else ""
             dept_type = str(row[4]).strip() if row[4] is not None else ""
             category = str(row[5]).strip() if row[5] is not None else ""
-            hod_username = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ""
 
             row_errors = []
+            if not stream:
+                row_errors.append("Stream is required.")
+            elif stream not in allowed_streams:
+                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
+
+            pair = (code, stream)
             if not code:
                 row_errors.append("Department Code is required.")
             elif len(code) > 20:
                 row_errors.append("Department Code cannot exceed 20 characters.")
-            elif code in db_existing_codes:
-                row_errors.append(f"Department Code '{code}' already exists.")
-            elif code in seen_codes_in_file:
-                row_errors.append(f"Duplicate Department Code '{code}' found within the uploaded Excel file.")
+            elif pair in db_existing_pairs:
+                row_errors.append(f"Department Code '{code}' with Stream '{stream}' already exists.")
+            elif pair in seen_pairs_in_file:
+                row_errors.append(f"Duplicate Department Code '{code}' with Stream '{stream}' found within the uploaded Excel file.")
             else:
-                seen_codes_in_file.add(code)
-
-            if not name:
-                row_errors.append("Department Name is required.")
-            elif len(name) > 150:
-                row_errors.append("Department Name exceeds the maximum allowed length.")
+                seen_pairs_in_file.add(pair)
 
             if not degree:
                 row_errors.append("Degree is required.")
@@ -214,28 +215,16 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             elif len(category) > 100:
                 row_errors.append("Category exceeds the maximum allowed length.")
 
-            hod_user_obj = None
-            if hod_username:
-                try:
-                    user = User.objects.get(username=hod_username)
-                    if user.role_id_id != Roles.SUBJECT_TEACHING_STAFF:
-                        row_errors.append(f"User '{hod_username}' is not a Subject Teaching Staff.")
-                    else:
-                        hod_user_obj = user
-                except User.DoesNotExist:
-                    row_errors.append(f"HOD username '{hod_username}' does not exist.")
-
             if row_errors:
                 errors.append({"row": row_idx, "errors": row_errors})
             else:
                 valid_departments.append(AcademicDepartment(
                     code=code,
-                    name=name,
+                    stream=stream,
                     degree=degree,
                     branch=branch,
                     type=dept_type,
                     category=category,
-                    hod_user_id=hod_user_obj
                 ))
 
         if errors:
