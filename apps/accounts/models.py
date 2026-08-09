@@ -72,6 +72,29 @@ class User(models.Model):
     @property
     def is_anonymous(self):
         return False
+    
+    # --- RBAC helpers (NEW) ---
+    @property
+    def role_name(self) -> str | None:
+        return getattr(self.role_id, 'name', None) if self.role_id else None
+    
+    @property
+    def service_department(self):
+        return self.service_department_id
+    
+    @property
+    def academic_department(self):
+        return self.academic_department_id
+    
+    def has_role(self, role_name: str) -> bool:
+        return self.role_name == role_name
+    
+    def has_any_role(self, roles: list[str]) -> bool:
+        return self.role_name in roles
+    
+    def is_system_admin(self) -> bool:
+        from.role_constants import Roles
+        return self.has_role(Roles.SYSTEM_ADMIN)
 
     class Meta:
         db_table = 'user'

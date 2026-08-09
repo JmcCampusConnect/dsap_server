@@ -18,7 +18,10 @@ SEEDERS = [
     "role_seeder",
     "user_seeder",
     "academic_department_seeder",
+    "service_department_seeder",
     "service_management_seeder",
+    "service_field_seeder",
+    "student_seeder",
 ]
 
 
