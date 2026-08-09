@@ -89,22 +89,74 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="options")
     def get_options(self, request):
-
         base_qs = AcademicDepartment.objects.exclude(status="INACTIVE")
-        types = list(base_qs.exclude(type="").values_list("type", flat=True).distinct())
-        categories = list(base_qs.exclude(category="").values_list("category", flat=True).distinct())
-        codes = list(base_qs.exclude(code="").values_list("code", flat=True).distinct())
+
+        stream_filter = request.query_params.get("stream", "").strip()
+        type_filter = request.query_params.get("type", "").strip()
+        category_filter = request.query_params.get("category", "").strip()
+        degree_filter = request.query_params.get("degree", "").strip()
+        branch_filter = request.query_params.get("branch", "").strip()
+
+        # All active records for frontend client-side dynamic filtering
+        records = list(
+            base_qs.values("stream", "type", "category", "degree", "branch", "code").distinct()
+        )
+
         streams = list(base_qs.exclude(stream="").values_list("stream", flat=True).distinct())
-        degrees = list(base_qs.exclude(degree="").values_list("degree", flat=True).distinct())
-        branches = list(base_qs.exclude(branch="").values_list("branch", flat=True).distinct())
-        
+
+        type_qs = base_qs.exclude(type="")
+        if stream_filter:
+            type_qs = type_qs.filter(stream=stream_filter)
+        types = list(type_qs.values_list("type", flat=True).distinct())
+
+        cat_qs = base_qs.exclude(category="")
+        if stream_filter:
+            cat_qs = cat_qs.filter(stream=stream_filter)
+        if type_filter:
+            cat_qs = cat_qs.filter(type=type_filter)
+        categories = list(cat_qs.values_list("category", flat=True).distinct())
+
+        deg_qs = base_qs.exclude(degree="")
+        if stream_filter:
+            deg_qs = deg_qs.filter(stream=stream_filter)
+        if type_filter:
+            deg_qs = deg_qs.filter(type=type_filter)
+        if category_filter:
+            deg_qs = deg_qs.filter(category=category_filter)
+        degrees = list(deg_qs.values_list("degree", flat=True).distinct())
+
+        branch_qs = base_qs.exclude(branch="")
+        if stream_filter:
+            branch_qs = branch_qs.filter(stream=stream_filter)
+        if type_filter:
+            branch_qs = branch_qs.filter(type=type_filter)
+        if category_filter:
+            branch_qs = branch_qs.filter(category=category_filter)
+        if degree_filter:
+            branch_qs = branch_qs.filter(degree=degree_filter)
+        branches = list(branch_qs.values_list("branch", flat=True).distinct())
+
+        code_qs = base_qs.exclude(code="")
+        if stream_filter:
+            code_qs = code_qs.filter(stream=stream_filter)
+        if type_filter:
+            code_qs = code_qs.filter(type=type_filter)
+        if category_filter:
+            code_qs = code_qs.filter(category=category_filter)
+        if degree_filter:
+            code_qs = code_qs.filter(degree=degree_filter)
+        if branch_filter:
+            code_qs = code_qs.filter(branch=branch_filter)
+        codes = list(code_qs.values_list("code", flat=True).distinct())
+
         return Response({
-            "types": [{"value": x, "label": x} for x in types],
-            "categories": [{"value": x, "label": x} for x in categories],
-            "codes": [{"value": x, "label": x} for x in codes],
-            "streams": [{"value": x, "label": x} for x in streams],
-            "degrees": [{"value": x, "label": x} for x in degrees],
-            "branches": [{"value": x, "label": x} for x in branches],
+            "streams": [{"value": x, "label": x} for x in sorted(streams)],
+            "types": [{"value": x, "label": x} for x in sorted(types)],
+            "categories": [{"value": x, "label": x} for x in sorted(categories)],
+            "degrees": [{"value": x, "label": x} for x in sorted(degrees)],
+            "branches": [{"value": x, "label": x} for x in sorted(branches)],
+            "codes": [{"value": x, "label": x} for x in sorted(codes)],
+            "records": records,
         })
 
     @action(detail=False, methods=['get'], url_path='export')
@@ -115,17 +167,17 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = "Academic Departments"
         
-        headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
+        headers = ["Stream", "Type", "Category", "Degree", "Branch", "Code"]
         ws.append(headers)
         
         for dept in qs:
             ws.append([
-                dept.code,
                 dept.stream,
-                dept.degree,
-                dept.branch,
                 dept.type,
                 dept.category,
+                dept.degree,
+                dept.branch,
+                dept.code,
             ])
             
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -133,6 +185,201 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         wb.save(response)
         
         return response
+
+    def _extract_header_map(self, header_row):
+        """Map required fields to column indices based on header names."""
+        REQUIRED_FIELDS = {"code", "stream", "degree", "branch", "type", "category"}
+        col_map = {}
+        if not header_row:
+            return col_map, REQUIRED_FIELDS
+
+        for idx, cell in enumerate(header_row):
+            if cell is None:
+                continue
+            name = str(cell).strip().lower()
+            if name in REQUIRED_FIELDS and name not in col_map:
+                col_map[name] = idx
+
+        missing = REQUIRED_FIELDS - set(col_map.keys())
+        return col_map, missing
+
+    @action(detail=False, methods=['post'], url_path='parse_excel', parser_classes=[MultiPartParser, FormParser])
+    def parse_excel(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(file, data_only=True)
+            ws = wb.active
+        except Exception:
+            return Response({"error": "Invalid Excel file format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
+
+        col_map, missing = self._extract_header_map(rows[0])
+        if missing:
+            missing_readable = ", ".join(sorted([m.capitalize() for m in missing]))
+            return Response({
+                "error": f"Missing required header(s): {missing_readable}. Required headers are: Code, Stream, Degree, Branch, Type, Category."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        db_existing = set(
+            AcademicDepartment.objects.values_list('code', 'stream')
+        )
+        db_existing_lower = {(c.strip().upper(), s.strip().lower()) for c, s in db_existing}
+
+        seen_pairs_in_file = set()
+        parsed_rows = []
+
+        summary = {
+            "new": 0,
+            "invalid": 0,
+            "duplicate": 0,
+            "already_exists": 0,
+            "total": 0
+        }
+
+        for row_idx, row in enumerate(rows[1:], start=2):
+            if not any(row):
+                continue
+
+            get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
+
+            code = get_val("code").upper()
+            stream = get_val("stream")
+            degree = get_val("degree")
+            branch = get_val("branch")
+            dept_type = get_val("type")
+            category = get_val("category")
+
+            row_data = {
+                "row_number": row_idx,
+                "code": code,
+                "stream": stream,
+                "degree": degree,
+                "branch": branch,
+                "type": dept_type,
+                "category": category,
+                "status": "NEW",
+                "errors": []
+            }
+
+            row_errors = []
+            if not code:
+                row_errors.append("Department Code is required.")
+            elif len(code) > 20:
+                row_errors.append("Department Code exceeds 20 characters.")
+
+            if not stream:
+                row_errors.append("Stream is required.")
+
+            if not degree:
+                row_errors.append("Degree is required.")
+            elif len(degree) > 50:
+                row_errors.append("Degree exceeds 50 characters.")
+
+            if not branch:
+                row_errors.append("Branch is required.")
+            elif len(branch) > 100:
+                row_errors.append("Branch exceeds 100 characters.")
+
+            if not dept_type:
+                row_errors.append("Type is required.")
+            elif len(dept_type) > 100:
+                row_errors.append("Type exceeds 100 characters.")
+
+            if not category:
+                row_errors.append("Category is required.")
+            elif len(category) > 100:
+                row_errors.append("Category exceeds 100 characters.")
+
+            summary["total"] += 1
+
+            if row_errors:
+                row_data["status"] = "INVALID"
+                row_data["errors"] = row_errors
+                summary["invalid"] += 1
+            else:
+                pair = (code, stream.lower())
+                if (code, stream.lower()) in db_existing_lower:
+                    row_data["status"] = "ALREADY EXISTS"
+                    row_data["errors"] = [f"Department Code '{code}' with Stream '{stream}' already exists in database."]
+                    summary["already_exists"] += 1
+                elif pair in seen_pairs_in_file:
+                    row_data["status"] = "DUPLICATE"
+                    row_data["errors"] = [f"Duplicate Department Code '{code}' with Stream '{stream}' in uploaded file."]
+                    summary["duplicate"] += 1
+                else:
+                    seen_pairs_in_file.add(pair)
+                    row_data["status"] = "NEW"
+                    summary["new"] += 1
+
+            parsed_rows.append(row_data)
+
+        return Response({
+            "summary": summary,
+            "rows": parsed_rows
+        })
+
+    @action(detail=False, methods=['post'], url_path='confirm_import')
+    def confirm_import(self, request):
+        items = request.data.get('items', [])
+        if not items or not isinstance(items, list):
+            return Response({"error": "No items provided for import"}, status=status.HTTP_400_BAD_REQUEST)
+
+        db_existing = set(
+            (c.strip().upper(), s.strip().lower())
+            for c, s in AcademicDepartment.objects.values_list('code', 'stream')
+        )
+
+        valid_departments = []
+        errors = []
+
+        for idx, item in enumerate(items, start=1):
+            serializer = AcademicDepartmentSerializer(data=item)
+            if not serializer.is_valid():
+                errors.append({"item": idx, "code": item.get('code'), "errors": serializer.errors})
+                continue
+
+            code = serializer.validated_data['code']
+            stream = serializer.validated_data['stream']
+            pair = (code.upper(), stream.lower())
+
+            if pair in db_existing:
+                errors.append({"item": idx, "code": code, "errors": f"Department Code '{code}' with Stream '{stream}' already exists."})
+                continue
+
+            db_existing.add(pair)
+            valid_departments.append(AcademicDepartment(
+                code=code,
+                stream=stream,
+                degree=serializer.validated_data['degree'],
+                branch=serializer.validated_data['branch'],
+                type=serializer.validated_data['type'],
+                category=serializer.validated_data['category'],
+            ))
+
+        if errors and not valid_departments:
+            return Response({"error": "Validation failed for all items", "details": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            created_objs = AcademicDepartment.objects.bulk_create(valid_departments)
+            AuditLog.log(
+                request=request,
+                action='IMPORT',
+                obj=AcademicDepartment,
+                object_id='BULK_IMPORT',
+                object_repr='Imported Academic Departments',
+                changes={"imported_count": len(created_objs)}
+            )
+
+        return Response({
+            "message": f"Successfully imported {len(created_objs)} departments",
+            "imported_count": len(created_objs)
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='import', parser_classes=[MultiPartParser, FormParser])
     def import_excel(self, request):
@@ -150,40 +397,36 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if len(rows) < 2:
             return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
 
-        headers = [str(h).strip() for h in rows[0] if h is not None]
-        expected_headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
-        
-        if len(headers) < len(expected_headers) or headers[:len(expected_headers)] != expected_headers:
+        col_map, missing = self._extract_header_map(rows[0])
+        if missing:
+            missing_readable = ", ".join(sorted([m.capitalize() for m in missing]))
             return Response({
-                "error": f"Invalid headers. Expected: {', '.join(expected_headers)}"
+                "error": f"Missing required header(s): {missing_readable}. Required headers are: Code, Stream, Degree, Branch, Type, Category."
             }, status=status.HTTP_400_BAD_REQUEST)
 
         errors = []
         valid_departments = []
-        db_existing_pairs = set(AcademicDepartment.objects.values_list('code', 'stream'))
+        db_existing_pairs = set((c.upper(), s.lower()) for c, s in AcademicDepartment.objects.values_list('code', 'stream'))
         seen_pairs_in_file = set()
-        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
-        allowed_streams = {'SFM', 'SFW', 'Aided'}
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
                 continue
-                
-            code = str(row[0]).strip().upper() if row[0] is not None else ""
-            raw_stream = str(row[1]).strip() if row[1] is not None else ""
-            stream = stream_map.get(raw_stream.upper(), raw_stream)
-            degree = str(row[2]).strip() if row[2] is not None else ""
-            branch = str(row[3]).strip() if row[3] is not None else ""
-            dept_type = str(row[4]).strip() if row[4] is not None else ""
-            category = str(row[5]).strip() if row[5] is not None else ""
+
+            get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
+
+            code = get_val("code").upper()
+            stream = get_val("stream")
+            degree = get_val("degree")
+            branch = get_val("branch")
+            dept_type = get_val("type")
+            category = get_val("category")
 
             row_errors = []
             if not stream:
                 row_errors.append("Stream is required.")
-            elif stream not in allowed_streams:
-                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
 
-            pair = (code, stream)
+            pair = (code, stream.lower())
             if not code:
                 row_errors.append("Department Code is required.")
             elif len(code) > 20:
@@ -234,16 +477,16 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            AcademicDepartment.objects.bulk_create(valid_departments)
+            created_objs = AcademicDepartment.objects.bulk_create(valid_departments)
             AuditLog.log(
                 request=request,
                 action='IMPORT',
                 obj=AcademicDepartment,
                 object_id='BULK_IMPORT',
                 object_repr='Imported Academic Departments',
-                changes={"imported_count": len(valid_departments)}
+                changes={"imported_count": len(created_objs)}
             )
 
         return Response({
-            "message": f"Successfully imported {len(valid_departments)} departments"
-        }, status=status.HTTP_201_CREATED)
+            "message": f"Successfully imported {len(created_objs)} departments"
+        }, status=status.HTTP_201_CREATED)
