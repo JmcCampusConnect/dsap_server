@@ -11,6 +11,7 @@ except Exception as exc:
 
 
 def run() -> dict[str, Any]:
+    
     """Seed the academic department table with official master data (71 records)."""
 
     if not HAS_MODEL:
@@ -520,6 +521,7 @@ def run() -> dict[str, Any]:
     updated = 0
 
     for department_data in departments:
+
         department, is_created = AcademicDepartment.objects.update_or_create(
             code=department_data["code"],
             stream=department_data["stream"],

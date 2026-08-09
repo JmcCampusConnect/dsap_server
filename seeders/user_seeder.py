@@ -47,8 +47,23 @@ def run() -> dict[str, Any]:
         },
         {
             "role": "STUDENT",
-            "username": "21MCA066",
-            "email": "ashraf@example.com",
+            "username": "24MCA057",
+            "email": "student057@example.com",
+        },
+        {
+            "role": "STUDENT",
+            "username": "24MCA064",
+            "email": "student064@example.com",
+        },
+        {
+            "role": "STUDENT",
+            "username": "24MCA065",
+            "email": "student065@example.com",
+        },
+        {
+            "role": "STUDENT",
+            "username": "24MCA066",
+            "email": "student066@example.com",
         },
     ]
 

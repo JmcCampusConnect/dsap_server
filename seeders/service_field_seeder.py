@@ -2,6 +2,7 @@ from apps.services.models import Service, ServiceField
 from django.db import transaction
 
 def run() -> dict:
+
     result = {"created": 0, "existing": 0, "skipped": False}
 
     try:
@@ -15,6 +16,7 @@ def run() -> dict:
             return result
 
     with transaction.atomic():
+        
         # Clear old fields for this service to ensure clean state
         ServiceField.objects.filter(service_id=service).delete()
 
