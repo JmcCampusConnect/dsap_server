@@ -13,22 +13,25 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get('password')
         
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.select_related('role_id', 'service_department_id', 'academic_department_id').get(username=username)
         except User.DoesNotExist:
             raise AuthenticationFailed('User not found!')
+        
+        if not user.is_active:
+            raise AuthenticationFailed('Account is deactivated!')
         
         if not check_password(password, user.password_hash):
             raise AuthenticationFailed('Incorrect password!')
         
         data = super().validate(attrs)
-        user = self.user
 
-        data["username"] = user.username
-        data["role"] = user.role_id.name if user.role_id else None
-        data["menus"] = (
-            get_accessible_menus(user.role_id.name)
-            if user.role_id else []
-        )
+        data.update({
+            "username": user.username,
+            "role": user.role_name,
+            "role_id": user.role_id.id if user.role_id else None,
+            "service_department_id": getattr(user.service_department_id, 'id', None) if user.service_department_id else None,
+            "menus": get_accessible_menus(user.role_name) if user.role_name else [],
+        })
         return data
 
 

@@ -1,15 +1,20 @@
 from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
+
 from django.db.models import Q
 from django.db import transaction
 from django.http import HttpResponse
+
 import openpyxl
 
 from apps.departments.models import ServiceDepartment
-from apps.departments.serializers.service_department import ServiceDepartmentSerializer
+from apps.departments.serializers import ServiceDepartmentSerializer
 from apps.accounts.models import User
+from apps.accounts.permissions import IsSystemAdmin, IsOwnServiceDepartment
+from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from common.pagination import StandardPagination
 
@@ -19,8 +24,13 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
+        user = self.request.user
+        
+        # Start with base queryset with search/filter capabilities
         qs = ServiceDepartment.objects.all().order_by("code")
-
+        
+        # Apply search/filter parameters (only for system admin or full access)
+        # For service department roles, we'll filter by their department after applying search
         search = self.request.query_params.get("search", "").strip()
         if search:
             qs = qs.filter(
@@ -47,7 +57,27 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         if hod_user_id:
             qs = qs.filter(hod_user_id=hod_user_id)
 
-        return qs
+        # Apply role-based filtering
+        if user.is_system_admin():
+            return qs
+        # For service department roles, show only their own department
+        if user.has_any_role([Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF]):
+            dept_id = getattr(user.service_department_id, 'id', None)
+            if dept_id:
+                return qs.filter(id=dept_id)
+            return qs.none()
+        # Others see nothing (but they won't pass permission anyway)
+        return qs.none()
+    
+    def get_permissions(self):
+        # List and retrieve: require authenticated and permission to view own dept(or system admin)
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsOwnServiceDepartment()]
+        # Create, destroy: only System Admin
+        if self.action in ['create', 'destroy']:
+            return [IsAuthenticated(), IsSystemAdmin()]
+        # Update, partial_update: System Admin (full) or Dept Admin (restricted via serializer)
+        return [IsAuthenticated(), IsOwnServiceDepartment()]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -79,9 +109,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """
-        Soft delete (Deactivate) the department.
+        Soft delete (Deactivate) - only System Admin can call this (permission enforced).
         """
-
         department = self.get_object()
         snapshot = self.get_serializer(department).data
         object_id = department.pk
@@ -106,7 +135,17 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         """
         Dropdown options for the service department filter UI.
         """
+        # Apply permission filtering for options
+        user = request.user
         base_qs = ServiceDepartment.objects.all()
+        
+        if not user.is_system_admin():
+            if user.has_any_role([Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF]):
+                dept_id = getattr(user.service_department_id, 'id', None)
+                if dept_id:
+                    base_qs = base_qs.filter(id=dept_id)
+                else:
+                    base_qs = base_qs.none()
 
         codes = list(
             base_qs.exclude(code="").values_list("code", flat=True).distinct().order_by("code")
@@ -184,6 +223,13 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="import", parser_classes=[MultiPartParser, FormParser])
     def import_excel(self, request):
+        # Only system admin can import
+        if not request.user.is_system_admin():
+            return Response(
+                {"error": "Only system administrators can import departments."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         file = request.FILES.get("file")
         if not file:
             return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)

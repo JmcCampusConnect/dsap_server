@@ -15,6 +15,15 @@ class Student(models.Model):
         unique=True
     )
 
+    name = models.CharField(
+        max_length=100
+    )
+
+    dob = models.DateField(
+        null=True,
+        blank=True
+    )
+
     user_id = models.OneToOneField(
         'accounts.User',
         on_delete=models.RESTRICT,
