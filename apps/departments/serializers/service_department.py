@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.departments.models import ServiceDepartment
+from apps.accounts.role_constants import Roles
 
 
 class ServiceDepartmentSerializer(serializers.ModelSerializer):
@@ -32,18 +33,14 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
         return value
 
     def validate_hod_user_id(self, value):
-        """
-        HOD must have SERVICE_DEPT_ADMIN role.
-        """
-
         if value is None:
             return value
-
-        if value.role_id.name != "SERVICE_DEPT_ADMIN":
+        
+        # HOD must have SERVICE_DEPT_ADMIN role
+        if value.role_id.name != Roles.SERVICE_DEPT_ADMIN:
             raise serializers.ValidationError(
                 "Selected HOD must have SERVICE_DEPT_ADMIN role."
             )
-
         return value
 
     def validate_status(self, value):
@@ -57,3 +54,21 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
         # business rules (default code/name) are confirmed.
 
         return department
+    
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        user = request.user if request else None
+        
+        # If user is NOT System Admin, restrict fields
+        if user and not user.is_system_admin():
+            # Dept Admin can only update name and hod_user_id (profile fields)
+            allowed_fields = {'name', 'hod_user_id'}
+            for field in list(validated_data.keys()):
+                if field not in allowed_fields:
+                    validated_data.pop(field, None)
+                    
+        # Proceed with update
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

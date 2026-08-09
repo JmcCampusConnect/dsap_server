@@ -1,20 +1,13 @@
-from rest_framework.permissions import BasePermission
+# apps/departments/permissions.py
+# Re‑export the reusable permission classes from accounts
+from apps.accounts.permissions import (
+    IsSystemAdmin,
+    IsServiceDeptAdmin,
+    IsServiceDeptStaff,
+    IsOwnServiceDepartment,
+    IsSelfStudent,
+    IsSelfOrSystemAdmin,
+)
 
-
-class IsServiceDepartmentAdmin(BasePermission):
-    
-    """Allows access only to users with the SERVICE_DEPT_ADMIN role """
-
-    message = "Only Service Department Admins can perform this action."
-
-    def has_permission(self, request, view):
-        # User must be authenticated
-        if not request.user or not request.user.is_authenticated:
-            return False
-
-        # User must have a role
-        if not hasattr(request.user, "role_id") or request.user.role_id is None:
-            return False
-
-        # Role must be SERVICE_DEPT_ADMIN
-        return request.user.role_id.name == "SERVICE_DEPT_ADMIN"
+# You can also add department‑specific aliases if desired
+IsServiceDepartmentAdmin = IsServiceDeptAdmin

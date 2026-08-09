@@ -1,64 +1,98 @@
 from rest_framework import permissions
+from.role_constants import Roles
 
+def _get_dept_id(obj, field_name: str):
+    """ Safely get department id from FK object or raw id. """
+    val = getattr(obj, field_name, None)
+    if val is None:
+        return None
+    return getattr(val, 'id', val)
 class IsSystemAdmin(permissions.BasePermission):
     """ Allows access only to SYSTEM_ADMIN users """
     def has_permission(self, request, view):
-        return (
+        return bool(
             request.user and 
             request.user.is_authenticated and 
-            request.user.role_id and               # use role_id
-            request.user.role_id.name == 'SYSTEM_ADMIN'
+            request.user.has_role(Roles.SYSTEM_ADMIN)
         )
 
+class IsServiceDeptAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user and 
+            request.user.is_authenticated and 
+            request.user.has_role(Roles.SERVICE_DEPT_ADMIN)
+        )
+        
+class IsServiceDeptStaff(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user and 
+            request.user.is_authenticated and 
+            request.user.has_role(Roles.SERVICE_DEPT_STAFF)
+        )
+
+class IsStudent(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user and 
+            request.user.is_authenticated and
+            request.user.has_role(Roles.STUDENT)
+        )
+        
+class IsTeachingStaff(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user and 
+            request.user.is_authenticated and
+            request.user.has_role(Roles.SUBJECT_TEACHING_STAFF)
+        )
 class IsOwnServiceDepartment(permissions.BasePermission):
-    """ Allows access only to users whose service department matches the requested resource """
+    """ List: allow dept roles. Object: same service_department_id or SYSTEM_ADMINN bypass """
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if not request.user.role_id:               # use role_id
-            return False
-        user_role = request.user.role_id.name
-        return user_role in ['SERVICE_DEPT_ADMIN', 'SERVICE_DEPT_STAFF']
+        return request.user.has_any_role([
+            Roles.SYSTEM_ADMIN,
+            Roles.SERVICE_DEPT_ADMIN,
+            Roles.SERVICE_DEPT_STAFF
+        ])
 
     def has_object_permission(self, request, view, obj):
-        user_dept = getattr(request.user, 'service_department_id', None)  # field name
-        obj_dept = getattr(obj, 'service_department_id', None)
+        if request.user.is_system_admin():
+            return True
+        user_dept = _get_dept_id(request.user, 'service_department_id')  
+        obj_dept = _get_dept_id(obj, 'service_department_id')
         if not user_dept or not obj_dept:
             return False
-        if hasattr(user_dept, 'id'):
-            return user_dept.id == obj_dept.id
         return user_dept == obj_dept
 
 class IsOwnAcademicDepartment(permissions.BasePermission):
-    """ Allows access only to users whose academic department matches the requested resource """
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        if not request.user.role_id:               # use role_id
-            return False
-        user_role = request.user.role_id.name
-        return user_role in ['SUBJECT_TEACHING_STAFF']
+        return request.user.has_any_role([
+            Roles.SUBJECT_TEACHING_STAFF,
+            Roles.SYSTEM_ADMIN,
+        ])
 
     def has_object_permission(self, request, view, obj):
-        user_dept = getattr(request.user, 'academic_department_id', None)
-        obj_dept = getattr(obj, 'academic_department_id', None)
+        if request.user.is_system_admin():
+            return True
+        user_dept = _get_dept_id(request.user, 'academic_department_id')
+        obj_dept = _get_dept_id(obj, 'academic_department_id')
         if not user_dept or not obj_dept:
             return False
-        if hasattr(user_dept, 'id'):
-            return user_dept.id == obj_dept.id
         return user_dept == obj_dept
 
 class IsSelfStudent(permissions.BasePermission):
-    """ Allows access only to the student's own records """
-    def has_permission(self, request, view):
-        return (
-            request.user and 
-            request.user.is_authenticated and 
-            request.user.role_id and               # use role_id
-            request.user.role_id.name == 'STUDENT'
-        )
-
     def has_object_permission(self, request, view, obj):
         if hasattr(obj, 'user'):
             return obj.user.id == request.user.id
-        return obj.id == request.user.id
+        return getattr(obj, 'id', None) == request.user.id
+    
+class IsSelfOrSystemAdmin(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.user.is_system_admin():
+            return True
+        return IsSelfStudent().has_object_permission(request, view, obj)
