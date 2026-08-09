@@ -20,14 +20,14 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
         'register_number',
         'mobile_number',
         'name',
-        'batch_year',
+        'year_of_admission',
         'section',
         'stream',
         'academic_department_id__code',
         'academic_department_id__degree',
         'academic_department_id__branch',
     ]
-    ordering_fields = ['register_number', 'batch_year', 'created_at']
+    ordering_fields = ['register_number', 'year_of_admission', 'created_at']
     ordering = ['register_number']   
 
     def get_queryset(self):
@@ -35,7 +35,7 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
         Custom filtering:
         - status (exact match)
         - include_inactive to show inactive too
-        - exact filters: register_number, batch_year, section, stream, academic_department_id
+        - exact filters: register_number, year_of_admission, section, stream, academic_department_id
         """
         queryset = (
             Student.objects
@@ -53,7 +53,7 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
 
         exact_filters = {
             'register_number__iexact': self.request.query_params.get('register_number', '').strip(),
-            'batch_year__iexact': self.request.query_params.get('batch_year', '').strip(),
+            'year_of_admission__iexact': self.request.query_params.get('year_of_admission', '').strip(),
             'section__iexact': self.request.query_params.get('section', '').strip(),
             'stream__iexact': self.request.query_params.get('stream', '').strip(),
         }

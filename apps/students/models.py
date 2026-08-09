@@ -36,7 +36,7 @@ class Student(models.Model):
         db_column='academic_department_id'
     )
 
-    batch_year = models.CharField(max_length=9)
+    year_of_admission = models.CharField(max_length=9)
 
     section = models.CharField(
         max_length=10,

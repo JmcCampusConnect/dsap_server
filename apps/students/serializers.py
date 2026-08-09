@@ -25,8 +25,8 @@ class StudentSerializer(serializers.ModelSerializer):
             'user_id',
             'academic_department_id',
             'academic_department_name',
-            'batch_year',
-            'dob',                     # renamed from date_of_birth
+            'year_of_admission',
+            'dob',                    
             'section',
             'stream',
             'mobile_number',
