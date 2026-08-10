@@ -220,7 +220,7 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
     Nested under /api/services/<service_id>/documents/
     """
     serializer_class = ServiceDocumentSerializer
-    pagination_class = StandardPagination
+    pagination_class = None
 
     def get_permissions(self):
         # TODO: Replace with proper admin permissions
@@ -244,7 +244,7 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
         service_id = self.kwargs.get("service_id")
         # Ensure the document belongs to the correct service
         instance = self.get_object()
-        if str(instance.service_id) != str(service_id):
+        if str(instance.service_id_id) != str(service_id):
             raise serializers.ValidationError(
                 "Document does not belong to this service"
             )
@@ -256,7 +256,7 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
         service_id = self.kwargs.get("service_id")
         
         # Ensure the document belongs to the correct service
-        if str(instance.service_id) != str(service_id):
+        if str(instance.service_id_id) != str(service_id):
             return Response(
                 {"detail": "Document does not belong to this service"},
                 status=status.HTTP_404_NOT_FOUND
