@@ -10,14 +10,10 @@ from openpyxl import Workbook
 from common.pagination import StandardPagination
 from .models import AuditLog
 
-
-
-
 class AuditLogListView(ListAPIView):
     queryset = AuditLog.objects.all()
     pagination_class = StandardPagination
     
-
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
 
