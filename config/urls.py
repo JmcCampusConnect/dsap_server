@@ -21,6 +21,9 @@ urlpatterns = [
     # Services
     path("api/services/", include("apps.services.urls")),
 
+    # Workflow
+    path("api/workflow/", include("apps.workflow.urls")),
+
     # Audit Logs
     path("api/audit-logs/", include("apps.audit.urls")),
 ]

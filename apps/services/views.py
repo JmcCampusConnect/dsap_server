@@ -1,12 +1,15 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
+from apps.audit.models import AuditLog
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
+from apps.accounts.models import Role
+from apps.workflow.constants import ACTION_TYPE_CHOICES, ALLOWED_ACTION_CHOICES
 from apps.services.serializers import (
     ServiceSerializer, 
     ServiceFieldSerializer, 
@@ -86,16 +89,45 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 pass
 
         code = f"{prefix}-{str(max_seq + 1).zfill(3)}"
-        serializer.save(code=code, status="ACTIVE")
+        instance = serializer.save(code=code, status="ACTIVE")
+        AuditLog.log(
+            request=self.request,
+            action="CREATE",
+            obj=instance,
+            changes=self.get_serializer(instance).data,
+        )
+
+    def perform_update(self, serializer):
+        old_data = self.get_serializer(serializer.instance).data
+        updated_instance = serializer.save()
+        new_data = self.get_serializer(updated_instance).data
+        changes = {}
+        for key, new_value in new_data.items():
+            old_value = old_data.get(key)
+            if old_value != new_value:
+                changes[key] = {"old": old_value, "new": new_value}
+        AuditLog.log(
+            request=self.request,
+            action="UPDATE",
+            obj=updated_instance,
+            changes=changes,
+        )
 
     # ── Soft-delete (toggle ACTIVE <-> INACTIVE) ─────────────────
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        old_status = instance.status
         if instance.status == "ACTIVE":
             instance.status = "INACTIVE"
         else:
             instance.status = "ACTIVE"
         instance.save()
+        AuditLog.log(
+            request=request,
+            action="UPDATE",
+            obj=instance,
+            changes={"status": {"old": old_status, "new": instance.status}},
+        )
         return Response(ServiceSerializer(instance).data)
 
     # ── Dropdown options ─────────────────────────────────────────
@@ -115,12 +147,32 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         code_options = [{"value": c, "label": c} for c in codes if c]
         name_options = [{"value": n, "label": n} for n in names if n]
+
+        roles = Role.objects.all().order_by("name")
+        role_options = [
+            {
+                "value": str(r.id),
+                "label": r.name,
+                "description": r.description,
+            }
+            for r in roles
+        ]
+
+        action_type_options = [
+            {"value": code, "label": label} for code, label in ACTION_TYPE_CHOICES
+        ]
+        allowed_action_options = [
+            {"value": code, "label": label} for code, label in ALLOWED_ACTION_CHOICES
+        ]
         
         return Response({
             "departments": dept_options, 
             "statuses": status_options,
             "codes": code_options,
-            "names": name_options
+            "names": name_options,
+            "roles": role_options,
+            "action_types": action_type_options,
+            "allowed_actions": allowed_action_options,
         })
 
     # ── Public directory (active only) ───────────────────────────
@@ -165,7 +217,30 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
             last_field = ServiceField.objects.filter(service_id=service_id).order_by("-display_order").first()
             display_order = (last_field.display_order + 1) if last_field else 1
         
-        serializer.save(service_id=service, display_order=display_order)
+        instance = serializer.save(service_id=service, display_order=display_order)
+        AuditLog.log(
+            request=self.request,
+            action="CREATE",
+            obj=instance,
+            changes=self.get_serializer(instance).data,
+        )
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        old_data = self.get_serializer(instance).data
+        updated_instance = serializer.save()
+        new_data = self.get_serializer(updated_instance).data
+        changes = {}
+        for key, new_value in new_data.items():
+            old_value = old_data.get(key)
+            if old_value != new_value:
+                changes[key] = {"old": old_value, "new": new_value}
+        AuditLog.log(
+            request=self.request,
+            action="UPDATE",
+            obj=updated_instance,
+            changes=changes,
+        )
 
     @action(detail=False, methods=["patch"], url_path="reorder")
     def reorder(self, request, service_id=None):
@@ -207,6 +282,13 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
         # Bulk update
         if updated_fields:
             ServiceField.objects.bulk_update(updated_fields, ["display_order"])
+            AuditLog.log(
+                request=request,
+                action="UPDATE",
+                app_label="services",
+                model_name="ServiceField",
+                changes={"reorder": fields_data},
+            )
             
         return Response(
             {"detail": "Reordered successfully", "updated": len(updated_fields)},
@@ -237,7 +319,13 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
         """Create a new document for a service"""
         service_id = self.kwargs.get("service_id")
         service = get_object_or_404(Service, id=service_id)
-        serializer.save(service_id=service)
+        instance = serializer.save(service_id=service)
+        AuditLog.log(
+            request=self.request,
+            action="CREATE",
+            obj=instance,
+            changes=self.get_serializer(instance).data,
+        )
 
     def perform_update(self, serializer):
         """Update a document"""
@@ -248,7 +336,20 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError(
                 "Document does not belong to this service"
             )
-        serializer.save()
+        old_data = self.get_serializer(instance).data
+        updated_instance = serializer.save()
+        new_data = self.get_serializer(updated_instance).data
+        changes = {}
+        for key, new_value in new_data.items():
+            old_value = old_data.get(key)
+            if old_value != new_value:
+                changes[key] = {"old": old_value, "new": new_value}
+        AuditLog.log(
+            request=self.request,
+            action="UPDATE",
+            obj=updated_instance,
+            changes=changes,
+        )
 
     def destroy(self, request, *args, **kwargs):
         """Delete a document"""
@@ -262,7 +363,16 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        object_id = instance.id
+        snapshot = self.get_serializer(instance).data
         instance.delete()
+        AuditLog.log(
+            request=request,
+            action="DELETE",
+            obj=instance,
+            object_id=object_id,
+            changes=snapshot,
+        )
         return Response(
             {"detail": "Document deleted successfully"},
             status=status.HTTP_204_NO_CONTENT

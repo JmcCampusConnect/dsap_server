@@ -1,6 +1,12 @@
 from rest_framework import serializers
+from django.db import models, transaction
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
+from apps.workflow.models import WorkflowStep
+from apps.workflow.serializers import WorkflowStepSerializer
+from apps.accounts.models import Role
+from apps.workflow.constants import ActionTypes, AllowedActions
+from apps.audit.models import AuditLog
 
 
 class ServiceDepartmentRefSerializer(serializers.ModelSerializer):
@@ -52,8 +58,8 @@ class ServiceSerializer(serializers.ModelSerializer):
     """
     Full serializer for Service CRUD.
 
-    Read  → returns nested `service_department` object {id, code, name} and `custom_fields`
-    Write → accepts `service_department_id` as an integer FK, plus optional `custom_fields`
+    Read  → returns nested `service_department` object {id, code, name}, `custom_fields`, and `workflow_steps`
+    Write → accepts `service_department_id` as an integer FK, plus optional `custom_fields` and `workflow_steps`
     """
 
     service_department = ServiceDepartmentRefSerializer(
@@ -61,6 +67,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     custom_fields = serializers.SerializerMethodField(read_only=True)
+    workflow_steps = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Service
@@ -76,6 +83,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "custom_fields",
+            "workflow_steps",
         ]
         read_only_fields = ["id", "code", "status", "created_at", "updated_at"]
         extra_kwargs = {
@@ -86,6 +94,10 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = ServiceField.objects.filter(service_id=obj).order_by("display_order", "id")
         return ServiceFieldSerializer(fields, many=True).data
 
+    def get_workflow_steps(self, obj):
+        steps = WorkflowStep.objects.filter(service_id=obj).select_related("responsible_role_id").order_by("step_order", "id")
+        return WorkflowStepSerializer(steps, many=True).data
+
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -95,6 +107,10 @@ class ServiceSerializer(serializers.ModelSerializer):
         if custom_fields_data is not None and isinstance(custom_fields_data, list):
             self._save_custom_fields(instance, custom_fields_data)
 
+        workflow_steps_data = self.initial_data.get("workflow_steps")
+        if workflow_steps_data is not None and isinstance(workflow_steps_data, list):
+            self._save_workflow_steps(instance, workflow_steps_data)
+
         return instance
 
     def create(self, validated_data):
@@ -103,6 +119,10 @@ class ServiceSerializer(serializers.ModelSerializer):
         custom_fields_data = self.initial_data.get("custom_fields")
         if custom_fields_data is not None and isinstance(custom_fields_data, list):
             self._save_custom_fields(instance, custom_fields_data)
+
+        workflow_steps_data = self.initial_data.get("workflow_steps")
+        if workflow_steps_data is not None and isinstance(workflow_steps_data, list):
+            self._save_workflow_steps(instance, workflow_steps_data)
 
         return instance
 
@@ -177,6 +197,121 @@ class ServiceSerializer(serializers.ModelSerializer):
             field_obj.save()
 
         ServiceField.objects.filter(service_id=service).exclude(id__in=kept_ids).delete()
+
+    @transaction.atomic
+    def _save_workflow_steps(self, service, workflow_steps_data):
+        request = self.context.get("request")
+        existing_steps = {s.id: s for s in WorkflowStep.objects.filter(service_id=service)}
+        kept_ids = set()
+
+        # Temporary step_order offset to avoid unique constraint collision during reordering
+        WorkflowStep.objects.filter(service_id=service).update(step_order=models.F('step_order') + 1000)
+
+        for index, item in enumerate(workflow_steps_data):
+            step_id_raw = item.get("id")
+            step_name = (item.get("step_name") or item.get("name") or "").strip()
+            if not step_name:
+                continue
+
+            role_id_val = item.get("responsible_role_id")
+            role_obj = None
+            if role_id_val is not None:
+                try:
+                    if isinstance(role_id_val, int) or (isinstance(role_id_val, str) and role_id_val.isdigit()):
+                        role_obj = Role.objects.get(id=int(role_id_val))
+                    else:
+                        role_obj = Role.objects.filter(name=str(role_id_val)).first()
+                except Role.DoesNotExist:
+                    role_obj = None
+
+            if not role_obj:
+                role_obj = Role.objects.exclude(name="STUDENT").first() or Role.objects.first()
+
+            action_type = (item.get("action_type") or "APPROVAL").strip().upper()
+            if action_type not in ActionTypes.all():
+                action_type = ActionTypes.APPROVAL
+
+            raw_actions = item.get("allowed_actions")
+            if raw_actions is None or not isinstance(raw_actions, list):
+                allowed_actions = [AllowedActions.APPROVE, AllowedActions.REJECT]
+            else:
+                allowed_actions = [
+                    a.strip().upper() for a in raw_actions
+                    if isinstance(a, str) and a.strip().upper() in AllowedActions.all()
+                ]
+                if not allowed_actions:
+                    allowed_actions = [AllowedActions.APPROVE, AllowedActions.REJECT]
+
+            step_order = index + 1
+
+            existing_obj = None
+            if step_id_raw is not None:
+                try:
+                    int_id = int(step_id_raw)
+                    existing_obj = existing_steps.get(int_id)
+                except (ValueError, TypeError):
+                    existing_obj = None
+
+            if existing_obj:
+                old_data = WorkflowStepSerializer(existing_obj).data
+                existing_obj.step_name = step_name
+                existing_obj.responsible_role_id = role_obj
+                existing_obj.action_type = action_type
+                existing_obj.allowed_actions = allowed_actions
+                existing_obj.step_order = step_order
+                existing_obj.save()
+                step_obj = existing_obj
+
+                new_data = WorkflowStepSerializer(step_obj).data
+                changes = {}
+                for k, new_val in new_data.items():
+                    old_val = old_data.get(k)
+                    if old_val != new_val:
+                        changes[k] = {"old": old_val, "new": new_val}
+                if changes:
+                    AuditLog.log(
+                        request=request,
+                        action="UPDATE",
+                        obj=step_obj,
+                        object_id=str(step_obj.id),
+                        object_repr=str(step_obj),
+                        changes=changes,
+                    )
+            else:
+                step_obj = WorkflowStep.objects.create(
+                    service_id=service,
+                    step_name=step_name,
+                    responsible_role_id=role_obj,
+                    action_type=action_type,
+                    allowed_actions=allowed_actions,
+                    step_order=step_order,
+                )
+                AuditLog.log(
+                    request=request,
+                    action="CREATE",
+                    obj=step_obj,
+                    object_id=str(step_obj.id),
+                    object_repr=str(step_obj),
+                    changes=WorkflowStepSerializer(step_obj).data,
+                )
+
+            kept_ids.add(step_obj.id)
+
+        deleted_steps = WorkflowStep.objects.filter(service_id=service).exclude(id__in=kept_ids)
+        for del_step in deleted_steps:
+            del_id = str(del_step.id)
+            del_repr = str(del_step)
+            snapshot = WorkflowStepSerializer(del_step).data
+            del_step.delete()
+            AuditLog.log(
+                request=request,
+                action="DELETE",
+                app_label="workflow",
+                model_name="WorkflowStep",
+                object_id=del_id,
+                object_repr=del_repr,
+                changes=snapshot,
+            )
 
 
 class ServiceDocumentSerializer(serializers.ModelSerializer):
