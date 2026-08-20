@@ -21,6 +21,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=200)),
                 ('base_fee', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
                 ('sla_days', models.SmallIntegerField(default=7)),
+                ('description', models.TextField(blank=True, null=True)),
                 ('status', models.CharField(default='ENABLED', max_length=10)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),

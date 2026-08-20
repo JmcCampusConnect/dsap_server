@@ -20,6 +20,8 @@ class Service(models.Model):
     )
 
     sla_days = models.SmallIntegerField(default=7)
+    
+    description = models.TextField(blank=True, null=True)
 
     status = models.CharField(
         max_length=10,

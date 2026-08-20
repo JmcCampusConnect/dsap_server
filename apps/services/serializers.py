@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
+from apps.workflow.models import WorkflowStep
 
 
 class ServiceDepartmentRefSerializer(serializers.ModelSerializer):
@@ -196,3 +197,52 @@ class ServiceDocumentSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Document name cannot be empty")
         return value.strip()
+
+class WorkflowStepSerializer(serializers.ModelSerializer):
+    """Serializer for workflow steps associated with a service."""
+    class Meta:
+        model = WorkflowStep
+        fields = [
+            "id",
+            "step_order",
+            "step_name",
+            "action_type",
+            "responsible_role_id",
+        ]
+
+class ServiceDirectoryDepartmentSerializer(serializers.ModelSerializer):
+    """Department with a list of enabled services."""
+    services = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServiceDepartment
+        fields = ['id', 'code', 'name', 'services']
+
+    def get_services(self, obj):
+        enabled_services = obj.service_set.filter(status='ENABLED').order_by('name')
+        return ServiceSerializer(enabled_services, many=True).data
+
+
+class ServiceDetailSerializer(ServiceSerializer):
+    """Full service detail including fields and documents, and workflow steps."""
+    documents = serializers.SerializerMethodField()
+    workflow_steps = serializers.SerializerMethodField()
+
+    class Meta(ServiceSerializer.Meta):
+        fields = ServiceSerializer.Meta.fields + ['documents', 'description', 'workflow_steps']
+
+    def get_documents(self, obj):
+        docs = ServiceDocument.objects.filter(service_id=obj).order_by('document_name')
+        return ServiceDocumentSerializer(docs, many=True).data
+    
+    def get_workflow_steps(self, obj):
+        steps = WorkflowStep.objects.filter(service_id=obj).order_by('step_order')
+        return WorkflowStepSerializer(steps, many=True).data
+
+
+class ServiceDepartmentWithCountSerializer(serializers.ModelSerializer):
+    service_count = serializers.IntegerField()
+
+    class Meta:
+        model = ServiceDepartment
+        fields = ['id', 'code', 'name', 'service_count']

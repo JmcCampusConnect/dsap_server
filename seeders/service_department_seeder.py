@@ -21,6 +21,10 @@ def run() -> dict[str, Any]:
 
     departments = [
         {"code": "COE", "name": "Controller of Examinations", "status": "ACTIVE"},
+        {"code": "ADM", "name": "Admissions", "status": "ACTIVE"},
+        {"code": "REG", "name": "Registration", "status": "ACTIVE"},
+        {"code": "FIN", "name": "Finance", "status": "ACTIVE"},
+        {"code": "LIB", "name": "Library", "status": "ACTIVE"},
     ]
 
     created = 0

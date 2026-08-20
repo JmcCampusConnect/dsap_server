@@ -1,16 +1,19 @@
 from rest_framework import viewsets, status
+from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
-
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
 from apps.services.serializers import (
     ServiceSerializer, 
     ServiceFieldSerializer, 
-    ServiceDocumentSerializer
+    ServiceDocumentSerializer,
+    ServiceDetailSerializer,
+    ServiceDirectoryDepartmentSerializer,
+    ServiceDepartmentWithCountSerializer,
 )
 from common.pagination import StandardPagination
 
@@ -132,6 +135,90 @@ class ServiceViewSet(viewsets.ModelViewSet):
             .order_by("service_department__name", "code")
         )
         serializer = ServiceSerializer(qs, many=True)
+        return Response(serializer.data)
+    
+    # -------- public directory endpoints --------
+    @action(detail=False, methods=['get'], url_path='directory')
+    def directory(self, request):
+        """
+        List all enabled services grouped by department.
+        """
+        departments = ServiceDepartment.objects.filter(
+            service__status='ENABLED'
+        ).distinct().order_by('name')
+        serializer = ServiceDirectoryDepartmentSerializer(departments, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='detail')
+    def detail_with_fields(self, request, pk=None):
+        """
+        Get full service detail with fields and documents.
+        Only if service is ENABLED.
+        """
+        service = self.get_queryset().filter(status='ENABLED').first()
+        if not service:
+            return Response(
+                {'detail': 'Service not found or not enabled.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ServiceDetailSerializer(service)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='departments')
+    def department_list(self, request):
+        """
+        List departments with count of enabled services.
+        """
+        departments = ServiceDepartment.objects.annotate(
+            service_count=Count('service', filter=Q(service__status='ENABLED'))
+        ).filter(service_count__gt=0).order_by('name')
+        serializer = ServiceDepartmentWithCountSerializer(departments, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        """
+        Search enabled services by query string (q).
+        Searches in name, code, and description (if available).
+        """
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response(
+                {'detail': 'Please provide a search query using ?q='},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        services = Service.objects.filter(status='ENABLED')
+        # Use Q to search in name, code, and description (if field exists)
+        q_objects = Q(name__icontains=query) | Q(code__icontains=query)
+        if hasattr(Service, 'description'):
+            q_objects |= Q(description__icontains=query)
+        services = services.filter(q_objects).order_by('name')
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='filter')
+    def filter_by_department(self, request):
+        """
+        Filter enabled services by department ID.
+        """
+        dept_id = request.query_params.get('department', '').strip()
+        if not dept_id:
+            return Response(
+                {'detail': 'Please provide department ID using ?department='},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            dept_id = int(dept_id)
+        except ValueError:
+            return Response(
+                {'detail': 'Invalid department ID.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        services = Service.objects.filter(
+            status='ENABLED',
+            service_department_id=dept_id
+        ).order_by('name')
+        serializer = ServiceSerializer(services, many=True)
         return Response(serializer.data)
 
 
@@ -267,3 +354,92 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
             {"detail": "Document deleted successfully"},
             status=status.HTTP_204_NO_CONTENT
         )
+        
+class ServiceDirectoryViewSet(GenericViewSet):
+    """
+    Public service directory endpoints.
+    Only returns services with status = 'ENABLED'.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = ServiceSerializer
+
+    def get_queryset(self):
+        return Service.objects.filter(status='ENABLED').select_related('service_department_id')
+
+    @action(detail=False, methods=['get'], url_path='')
+    def list_directory(self, request):
+        """
+        GET /api/service-directory/ - List all enabled services grouped by department.
+        """
+        departments = ServiceDepartment.objects.filter(
+            service__status='ENABLED'
+        ).distinct().order_by('name')
+        serializer = ServiceDirectoryDepartmentSerializer(departments, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='detail')
+    def detail_with_fields(self, request, pk=None):
+        """
+        GET /api/service-directory/{service_id}/ - Get service detail with fields/documents.
+        """
+        try:
+            service = self.get_queryset().get(pk=pk)
+        except Service.DoesNotExist:
+            return Response(
+                {'detail': 'Service not found or not enabled.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ServiceDetailSerializer(service)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='departments')
+    def department_list(self, request):
+        """
+        GET /api/service-directory/departments/ - List departments with service counts.
+        """
+        departments = ServiceDepartment.objects.annotate(
+            service_count=Count('service', filter=Q(service__status='ENABLED'))
+        ).filter(service_count__gt=0).order_by('name')
+        serializer = ServiceDepartmentWithCountSerializer(departments, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        """
+        GET /api/service-directory/search/?q= - Search services.
+        """
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response(
+                {'detail': 'Please provide a search query using ?q='},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        services = self.get_queryset()
+        q_objects = Q(name__icontains=query) | Q(code__icontains=query)
+        if hasattr(Service, 'description'):
+            q_objects |= Q(description__icontains=query)
+        services = services.filter(q_objects).order_by('name')
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='filter')
+    def filter_by_department(self, request):
+        """
+        GET /api/service-directory/filter/?department= - Filter by department.
+        """
+        dept_id = request.query_params.get('department', '').strip()
+        if not dept_id:
+            return Response(
+                {'detail': 'Please provide department ID using ?department='},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            dept_id = int(dept_id)
+        except ValueError:
+            return Response(
+                {'detail': 'Invalid department ID.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        services = self.get_queryset().filter(service_department_id=dept_id).order_by('name')
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data)
