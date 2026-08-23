@@ -20,4 +20,7 @@ urlpatterns = [
 
     # Services
     path("api/services/", include("apps.services.urls")),
+
+    # Audit Logs
+    path("api/audit-logs/", include("apps.audit.urls")),
 ]
