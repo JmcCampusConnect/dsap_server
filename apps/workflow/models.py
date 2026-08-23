@@ -24,15 +24,25 @@ class WorkflowStep(models.Model):
     )
 
     action_type = models.CharField(max_length=20)
+    allowed_actions = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of allowed action codes for this step, e.g. ['APPROVE', 'REJECT', 'RETURN']"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'workflow_step'
         unique_together = (('service_id', 'step_order'),)
+        ordering = ['step_order', 'id']
 
     def __str__(self):
-        return f"{self.service_id} - Step {self.step_order}"
+        try:
+            service_repr = self.service_id.name if self.service_id else f"Service #{self.service_id_id}"
+        except Exception:
+            service_repr = f"Service #{self.service_id_id}"
+        return f"{service_repr} - Step {self.step_order}: {self.step_name}"
 
 
 class WorkflowHistory(models.Model):
