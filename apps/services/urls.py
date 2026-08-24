@@ -1,6 +1,6 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from apps.services.views import ServiceViewSet, ServiceFieldViewSet, ServiceDocumentViewSet
+from apps.services.views import ServiceViewSet, ServiceFieldViewSet, ServiceDocumentViewSet, ServiceDirectoryViewSet
 from apps.workflow.views import WorkflowStepViewSet
 
 router = DefaultRouter()
