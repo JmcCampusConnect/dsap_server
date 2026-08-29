@@ -1,19 +1,17 @@
 from django.db import models
-from django.db.models import Count
 from django.http import HttpResponse
-
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
-
 from openpyxl import Workbook
-
 from common.pagination import StandardPagination
 from .models import AuditLog
 
+
 class AuditLogListView(ListAPIView):
+    
     queryset = AuditLog.objects.all()
     pagination_class = StandardPagination
-    
+
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
 
@@ -71,6 +69,7 @@ class AuditLogListView(ListAPIView):
 
         return self.get_paginated_response(data)
 
+
 class AuditLogStatsView(ListAPIView):
     def get(self, request, *args, **kwargs):
         total = AuditLog.objects.count()
@@ -78,6 +77,7 @@ class AuditLogStatsView(ListAPIView):
         return Response({
             "total": total,
         })
+
 
 class AuditLogActionsView(ListAPIView):
     def get(self, request, *args, **kwargs):
@@ -90,6 +90,7 @@ class AuditLogActionsView(ListAPIView):
         ]
 
         return Response(actions)
+
 
 class AuditLogModelsView(ListAPIView):
     def get(self, request, *args, **kwargs):
@@ -104,12 +105,11 @@ class AuditLogModelsView(ListAPIView):
 
         return Response(list(models))
 
+
 class AuditLogExportView(ListAPIView):
 
     def get(self, request, *args, **kwargs):
         queryset = AuditLog.objects.all()
-
-        # Filters
         action = request.query_params.get("action")
         model_name = request.query_params.get("model_name")
         user_id = request.query_params.get("user_id")
