@@ -106,13 +106,31 @@ class ServiceViewSet(viewsets.ModelViewSet):
         updated_instance = serializer.save()
         new_data = self.get_serializer(updated_instance).data
         changes = {}
+        status_changed = False
+        old_status = old_data.get('status', '')
+        new_status = new_data.get('status', '')
+        
         for key, new_value in new_data.items():
             old_value = old_data.get(key)
             if old_value != new_value:
                 changes[key] = {"old": old_value, "new": new_value}
+                if key == 'status':
+                    status_changed = True
+        
+        # Log as ACTIVATE or DEACTIVATE if only status is changing
+        if status_changed and len(changes) == 1:
+            if old_status == 'ACTIVE' and new_status == 'INACTIVE':
+                action = "DEACTIVATE"
+            elif old_status == 'INACTIVE' and new_status == 'ACTIVE':
+                action = "ACTIVATE"
+            else:
+                action = "UPDATE"
+        else:
+            action = "UPDATE"
+        
         AuditLog.log(
             request=self.request,
-            action="UPDATE",
+            action=action,
             obj=updated_instance,
             changes=changes,
         )
@@ -123,12 +141,14 @@ class ServiceViewSet(viewsets.ModelViewSet):
         old_status = instance.status
         if instance.status == "ACTIVE":
             instance.status = "INACTIVE"
+            action = "DEACTIVATE"
         else:
             instance.status = "ACTIVE"
+            action = "ACTIVATE"
         instance.save()
         AuditLog.log(
             request=request,
-            action="UPDATE",
+            action=action,
             obj=instance,
             changes={"status": {"old": old_status, "new": instance.status}},
         )

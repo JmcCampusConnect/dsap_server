@@ -6,6 +6,8 @@ class AuditLog(models.Model):
     ACTION_CHOICES = [
         ('CREATE', 'Create'),
         ('UPDATE', 'Update'),
+        ('ACTIVATE', 'Activate'),
+        ('DEACTIVATE', 'Deactivate'),
         ('DELETE', 'Delete'),
         ('VIEW', 'View'),
         ('LOGIN', 'Login'),
