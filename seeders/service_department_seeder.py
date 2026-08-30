@@ -51,10 +51,10 @@ def run() -> dict[str, Any]:
                 changed = True
             if changed:
                 updated += 1
-                print(f"  Updated department: {dept.code} — {dept.name}")
+                print(f"  Updated department: {dept.code} - {dept.name}")
             else:
                 existing += 1
-                print(f"  Department already exists and is up‑to‑date: {dept.code}")
+                print(f"  Department already exists and is up-to-date: {dept.code}")
 
     print(
         f"\nService department seeding completed. "

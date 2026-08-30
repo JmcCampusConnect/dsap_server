@@ -23,7 +23,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get_queryset(self):
-        qs = AcademicDepartment.objects.exclude(status="INACTIVE").order_by("code")
+        qs = AcademicDepartment.objects.filter(status=True).order_by("code")
 
         search = self.request.query_params.get("search", "").strip()
         if search:
@@ -74,22 +74,27 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             )
 
     def destroy(self, request, *args, **kwargs):
+        """Soft delete (Deactivate) Academic Department."""
         instance = self.get_object()
         snapshot = self.get_serializer(instance).data
         object_id = instance.pk
-        instance.delete()
+        instance.status = False
+        instance.save(update_fields=['status', 'updated_at'])
         AuditLog.log(
             request=request,
-            action='DELETE',
+            action='DEACTIVATE',
             obj=instance,
             object_id=object_id,
             changes=snapshot
         )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {"message": "Academic Department deactivated successfully."},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=False, methods=["get"], url_path="options")
     def get_options(self, request):
-        base_qs = AcademicDepartment.objects.exclude(status="INACTIVE")
+        base_qs = AcademicDepartment.objects.filter(status=True)
 
         stream_filter = request.query_params.get("stream", "").strip()
         type_filter = request.query_params.get("type", "").strip()
