@@ -77,7 +77,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     }
 
     ALLOWED_STREAMS = {'SFM', 'SFW', 'AIDED'}
-    ALLOWED_STATUSES = {'active', 'inactive'}
+    TRUE_STATUS_VALUES = {'true', '1', 'yes', 'active', 'enabled'}
+    FALSE_STATUS_VALUES = {'false', '0', 'no', 'inactive', 'disabled'}
 
     def get_queryset(self):
         queryset = (
@@ -90,9 +91,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get('status', '').strip()
 
         if status_filter:
-            queryset = queryset.filter(status__iexact=status_filter)
+            try:
+                parsed_status = self._parse_status_value(status_filter)
+            except ValueError:
+                queryset = queryset.none()
+            else:
+                if parsed_status is not None:
+                    queryset = queryset.filter(status=parsed_status)
         elif not include_inactive:
-            queryset = queryset.exclude(status__iexact='inactive')
+            queryset = queryset.filter(status=True)
 
         exact_filters = {
             'register_number__iexact': self.request.query_params.get('register_number', '').strip(),
@@ -189,15 +196,17 @@ class StudentViewSet(viewsets.ModelViewSet):
         raise ValueError('Stream must be one of: SFM, SFW, Aided.')
 
     @staticmethod
-    def _normalize_status(value):
+    def _parse_status_value(value):
         if value in (None, ''):
-            return 'ACTIVE'
+            return True
 
         normalized = str(value).strip().lower()
-        if normalized not in StudentViewSet.ALLOWED_STATUSES:
-            raise ValueError('Status must be either active or inactive.')
+        if normalized in StudentViewSet.TRUE_STATUS_VALUES:
+            return True
+        if normalized in StudentViewSet.FALSE_STATUS_VALUES:
+            return False
 
-        return normalized.upper()
+        raise ValueError('Status must be true/false, active/inactive, or enabled/disabled.')
 
     @staticmethod
     def _extract_department_code(register_number):
@@ -247,7 +256,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         snapshot = self.get_serializer(instance).data
         object_id = instance.pk
 
-        instance.status = 'inactive'
+        instance.status = False
         instance.save(update_fields=['status', 'updated_at'])
 
         if instance.user_id:
@@ -283,7 +292,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 student.section or '',
                 'Aided' if str(student.stream).upper() == 'AIDED' else student.stream,
                 student.mobile_number,
-                str(student.status).lower() if student.status else 'active',
+                bool(student.status),
             ])
 
         response = HttpResponse(
@@ -448,10 +457,10 @@ class StudentViewSet(viewsets.ModelViewSet):
                 row_errors.append('Mobile Number cannot exceed 15 characters.')
 
             try:
-                status_value = self._normalize_status(status_raw)
+                status_value = self._parse_status_value(status_raw)
             except ValueError as exc:
                 row_errors.append(str(exc))
-                status_value = 'ACTIVE'
+                status_value = True
 
             if row_errors:
                 errors.append({'row': row_idx, 'errors': row_errors})
@@ -504,7 +513,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     email=row['email'],
                     password_hash=make_password(row['dob'].isoformat()),
                     role_id=role,
-                    is_active=row['status'] == 'ACTIVE',
+                    is_active=bool(row['status']),
                 )
 
                 Student.objects.create(

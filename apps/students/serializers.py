@@ -91,6 +91,19 @@ class StudentSerializer(serializers.ModelSerializer):
 
         return department
 
+    def validate_stream(self, value):
+        normalized = str(value).strip()
+        if not normalized:
+            raise serializers.ValidationError('Stream cannot be empty.')
+
+        lookup = normalized.upper()
+        if lookup == 'AIDED':
+            return 'AIDED'
+        if lookup in {'SFM', 'SFW'}:
+            return lookup
+
+        raise serializers.ValidationError('Stream must be one of SFM, SFW, or Aided.')
+
     def validate_register_number(self, value):
         value = str(value).strip()
         if not value:
@@ -137,7 +150,8 @@ class StudentSerializer(serializers.ModelSerializer):
             email=email,
             password_hash=make_password(dob.isoformat()),
             role_id=role,
-            is_active=str(validated_data.get('status', 'ACTIVE')).lower() == 'active',
+            academic_department_id=department,
+            is_active=bool(validated_data.get('status', True)),
         )
 
         student = Student.objects.create(
@@ -167,7 +181,8 @@ class StudentSerializer(serializers.ModelSerializer):
                 instance.user_id.email = email
             instance.user_id.password_hash = make_password(dob.isoformat()) if dob else instance.user_id.password_hash
             instance.user_id.role_id = role
-            instance.user_id.is_active = str(instance.status).lower() == 'active'
+            instance.user_id.academic_department_id = department
+            instance.user_id.is_active = bool(instance.status)
             instance.user_id.save()
 
         instance.save()
@@ -175,8 +190,6 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if data.get('status'):
-            data['status'] = str(data['status']).lower()
         if data.get('stream') and str(data['stream']).upper() == 'AIDED':
             data['stream'] = 'Aided'
         return data
