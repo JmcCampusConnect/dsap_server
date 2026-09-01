@@ -13,16 +13,10 @@ except Exception as exc:
 
 
 SERVICE_DOCUMENTS = {
-    "COE-001": [
-        {
-            "document_name": "Previous Semester Mark Statement / CIA Grade Card",
-            "is_mandatory": True,
-        },
-        {
-            "document_name": "Course Teacher Recommendation / Attendance Slip",
-            "is_mandatory": False,
-        },
-    ],
+    # 1. CIA Reappear - No documents required
+    "COE-001": [],
+    
+    # 2. Transcript Certificate
     "COE-002": [
         {
             "document_name": "Copy of Consolidated Mark Statement",
@@ -36,35 +30,15 @@ SERVICE_DOCUMENTS = {
             "document_name": "WES / Credential Evaluation Form",
             "is_mandatory": False,
         },
-        {
-            "document_name": "Government / College ID Proof",
-            "is_mandatory": False,
-        },
     ],
-    "COE-003": [
-        {
-            "document_name": "Copies of Individual Semester Mark Statements",
-            "is_mandatory": True,
-        },
-        {
-            "document_name": "Student ID Card / Govt ID Proof",
-            "is_mandatory": True,
-        },
-    ],
-    "COE-004": [
-        {
-            "document_name": "Final Semester Mark Sheet / Provisional Certificate Copy",
-            "is_mandatory": True,
-        },
-        {
-            "document_name": "Student ID Card",
-            "is_mandatory": True,
-        },
-        {
-            "document_name": "No Dues Clearance Slip",
-            "is_mandatory": False,
-        },
-    ],
+    
+    # 3. Statement of Marks – All Semesters - No documents required
+    "COE-003": [],
+    
+    # 4. Pass Certificate - No documents required
+    "COE-004": [],
+    
+    # 5. Name Correction MS
     "COE-005": [
         {
             "document_name": "Copy of 10th Mark Statement (Proof of Name/DOB)",
@@ -73,10 +47,6 @@ SERVICE_DOCUMENTS = {
         {
             "document_name": "Copy of 12th Mark Statement",
             "is_mandatory": False,
-        },
-        {
-            "document_name": "Existing Mark Statement(s) to be Corrected",
-            "is_mandatory": True,
         },
     ],
 }
@@ -110,7 +80,7 @@ def run() -> dict[str, Any]:
                 )
                 total_created += 1
 
-            print(f"  Configured {len(docs)} document checklists for {service.code} ({service.name})")
+            print(f"  Configured {len(docs)} document checklist(s) for {service.code} ({service.name})")
 
     print(f"\nServiceDocument seeding completed. Total documents configured: {total_created}")
     return {"created": total_created, "existing": 0, "skipped": False}
