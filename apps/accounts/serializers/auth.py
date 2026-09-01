@@ -4,16 +4,16 @@ from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.hashers import check_password
 from ..role_constants import get_accessible_menus
 from ..models import User
-# import time
+import time
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # remember = serializers.BooleanField(default=False, write_only=True)
+    remember = serializers.BooleanField(default=False, write_only=True)
     
     def validate(self, attrs):
         username = attrs.get('username')
         password = attrs.get('password')
-        # remember = attrs.get('remember', False) # ! session work
+        remember = attrs.get('remember', False)
         
         # ----- Single querry with select_related (efficient) -----
         try:
@@ -27,31 +27,30 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not check_password(password, user.password_hash):
             raise AuthenticationFailed('Incorrect password!')
         
-#         self.user = user
+        self.user = user
         
-#         refresh = self.get_token(user)
-#         refresh['remember_me'] = remember
-#         refresh['session_started_at'] = int(time.time())
+        refresh = self.get_token(user)
+        refresh['remember_me'] = remember
+        refresh['session_started_at'] = int(time.time())
 
-#         role_name = user.role_name or ""
-#         data = {
-#             "username": user.username,
-#             "role": role_name,
-#             "role_id": user.role_id.id if user.role_id else None,
-#             "service_department_id": getattr(user.service_department_id, 'id', None) if user.service_department_id else None,
-#             "menus": get_accessible_menus(role_name) if role_name else [],
-#             "refresh": str(refresh),
-#             "access": str(refresh.access_token),
-#         }
-#         return data
+        role_name = user.role_name or ""
+        data = {
+            "username": user.username,
+            "role": role_name,
+            "role_id": user.role_id.id if user.role_id else None,
+            "service_department_id": getattr(user.service_department_id, 'id', None) if user.service_department_id else None,
+            "menus": get_accessible_menus(role_name) if role_name else [],
+            "refresh": str(refresh),
+        }
+        return data
 
-# class ValidateTokenSerializer(serializers.Serializer):
-#     username = serializers.CharField()
-#     role = serializers.CharField()
-#     role_id = serializers.IntegerField(allow_null=True)
-#     service_department_id = serializers.IntegerField(allow_null=True)
-#     is_active = serializers.BooleanField()
-#     menus = serializers.ListField(child=serializers.CharField())
+class ValidateTokenSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    role = serializers.CharField()
+    role_id = serializers.IntegerField(allow_null=True)
+    service_department_id = serializers.IntegerField(allow_null=True)
+    is_active = serializers.BooleanField()
+    menus = serializers.ListField(child=serializers.CharField())
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(help_text="Refresh token to blacklist")
