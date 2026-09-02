@@ -28,7 +28,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     list / retrieve        -> any authenticated user (AllowAny for dev)
     create / update        -> system_admin / service_dept_admin
-    destroy (soft-delete)  -> toggles status ACTIVE <-> INACTIVE
+    destroy (soft-delete)  -> toggles status (True <-> False)
     options_list           -> dropdown data for forms
     public_list            -> public directory (active services only)
     """
@@ -57,7 +57,10 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
         status_filter = self.request.query_params.get("status", "").strip()
         if status_filter:
-            qs = qs.filter(status=status_filter)
+            if status_filter.lower() in ("true", "1", "active"):
+                qs = qs.filter(status=True)
+            elif status_filter.lower() in ("false", "0", "inactive"):
+                qs = qs.filter(status=False)
 
         dept_filter = self.request.query_params.get("department", "").strip()
         if dept_filter:
@@ -93,7 +96,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 pass
 
         code = f"{prefix}-{str(max_seq + 1).zfill(3)}"
-        instance = serializer.save(code=code, status="ACTIVE")
+        instance = serializer.save(code=code, status=True)
         AuditLog.log(
             request=self.request,
             action="CREATE",
@@ -107,8 +110,8 @@ class ServiceViewSet(viewsets.ModelViewSet):
         new_data = self.get_serializer(updated_instance).data
         changes = {}
         status_changed = False
-        old_status = old_data.get('status', '')
-        new_status = new_data.get('status', '')
+        old_status = old_data.get('status')
+        new_status = new_data.get('status')
         
         for key, new_value in new_data.items():
             old_value = old_data.get(key)
@@ -119,9 +122,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         # Log as ACTIVATE or DEACTIVATE if only status is changing
         if status_changed and len(changes) == 1:
-            if old_status == 'ACTIVE' and new_status == 'INACTIVE':
+            if old_status is True and new_status is False:
                 action = "DEACTIVATE"
-            elif old_status == 'INACTIVE' and new_status == 'ACTIVE':
+            elif old_status is False and new_status is True:
                 action = "ACTIVATE"
             else:
                 action = "UPDATE"
@@ -139,13 +142,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         old_status = instance.status
-        if instance.status == "ACTIVE":
-            instance.status = "INACTIVE"
-            action = "DEACTIVATE"
-        else:
-            instance.status = "ACTIVE"
-            action = "ACTIVATE"
-        instance.save()
+        instance.status = not instance.status
+        action = "ACTIVATE" if instance.status else "DEACTIVATE"
+        instance.save(update_fields=['status', 'updated_at'])
         AuditLog.log(
             request=request,
             action=action,
@@ -157,13 +156,13 @@ class ServiceViewSet(viewsets.ModelViewSet):
     # ── Dropdown options ─────────────────────────────────────────
     @action(detail=False, methods=["get"], url_path="options")
     def options_list(self, request):
-        departments = ServiceDepartment.objects.filter(status="ACTIVE").order_by("name")
+        departments = ServiceDepartment.objects.filter(status__iexact="active").order_by("name")
         dept_options = [
             {"value": str(dept.id), "label": dept.name} for dept in departments
         ]
         status_options = [
-            {"value": "ACTIVE", "label": "Active"},
-            {"value": "INACTIVE", "label": "Inactive"},
+            {"value": "true", "label": "Active"},
+            {"value": "false", "label": "Inactive"},
         ]
         
         codes = Service.objects.values_list('code', flat=True).distinct().order_by('code')
@@ -204,7 +203,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def public_list(self, request):
         qs = (
             Service.objects.select_related("service_department_id")
-            .filter(status="ACTIVE")
+            .filter(status=True)
             .order_by("service_department__name", "code")
         )
         serializer = ServiceSerializer(qs, many=True)
@@ -217,7 +216,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         List all enabled services grouped by department.
         """
         departments = ServiceDepartment.objects.filter(
-            service__status='ENABLED'
+            service__status=True
         ).distinct().order_by('name')
         serializer = ServiceDirectoryDepartmentSerializer(departments, many=True)
         return Response(serializer.data)
@@ -226,9 +225,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def detail_with_fields(self, request, pk=None):
         """
         Get full service detail with fields and documents.
-        Only if service is ENABLED.
+        Only if service is ENABLED (status=True).
         """
-        service = self.get_queryset().filter(status='ENABLED').first()
+        service = self.get_queryset().filter(status=True).first()
         if not service:
             return Response(
                 {'detail': 'Service not found or not enabled.'},
@@ -243,7 +242,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         List departments with count of enabled services.
         """
         departments = ServiceDepartment.objects.annotate(
-            service_count=Count('service', filter=Q(service__status='ENABLED'))
+            service_count=Count('service', filter=Q(service__status=True))
         ).filter(service_count__gt=0).order_by('name')
         serializer = ServiceDepartmentWithCountSerializer(departments, many=True)
         return Response(serializer.data)
@@ -260,7 +259,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 {'detail': 'Please provide a search query using ?q='},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        services = Service.objects.filter(status='ENABLED')
+        services = Service.objects.filter(status=True)
         # Use Q to search in name, code, and description (if field exists)
         q_objects = Q(name__icontains=query) | Q(code__icontains=query)
         if hasattr(Service, 'description'):
@@ -288,7 +287,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         services = Service.objects.filter(
-            status='ENABLED',
+            status=True,
             service_department_id=dept_id
         ).order_by('name')
         serializer = ServiceSerializer(services, many=True)
@@ -489,13 +488,13 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
 class ServiceDirectoryViewSet(GenericViewSet):
     """
     Public service directory endpoints.
-    Only returns services with status = 'ENABLED'.
+    Only returns services with status = True.
     """
     permission_classes = [AllowAny]
     serializer_class = ServiceSerializer
 
     def get_queryset(self):
-        return Service.objects.filter(status='ENABLED').select_related('service_department_id')
+        return Service.objects.filter(status=True).select_related('service_department_id')
 
     @action(detail=False, methods=['get'], url_path='')
     def list_directory(self, request):
@@ -503,7 +502,7 @@ class ServiceDirectoryViewSet(GenericViewSet):
         GET /api/service-directory/ - List all enabled services grouped by department.
         """
         departments = ServiceDepartment.objects.filter(
-            service__status='ENABLED'
+            service__status=True
         ).distinct().order_by('name')
         serializer = ServiceDirectoryDepartmentSerializer(departments, many=True)
         return Response(serializer.data)
@@ -529,7 +528,7 @@ class ServiceDirectoryViewSet(GenericViewSet):
         GET /api/service-directory/departments/ - List departments with service counts.
         """
         departments = ServiceDepartment.objects.annotate(
-            service_count=Count('service', filter=Q(service__status='ENABLED'))
+            service_count=Count('service', filter=Q(service__status=True))
         ).filter(service_count__gt=0).order_by('name')
         serializer = ServiceDepartmentWithCountSerializer(departments, many=True)
         return Response(serializer.data)

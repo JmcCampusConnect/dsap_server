@@ -353,7 +353,7 @@ class ServiceDirectoryDepartmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'name', 'services']
 
     def get_services(self, obj):
-        enabled_services = obj.service_set.filter(status='ENABLED').order_by('name')
+        enabled_services = obj.service_set.filter(status=True).order_by('name')
         return ServiceSerializer(enabled_services, many=True).data
 
 
