@@ -108,6 +108,36 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertFalse(student.status)
         self.assertFalse(student.user_id.is_active)
 
+    def test_create_student_rejects_duplicate_email(self):
+        User.objects.create(
+            username='12CSE0099',
+            email='existing.student@example.com',
+            password_hash='hashed-password',
+            role_id=self.student_role,
+            academic_department_id=self.department,
+            is_active=True,
+        )
+
+        serializer = StudentSerializer(
+            data={
+                'register_number': '12CSE0005',
+                'name': 'Duplicate Email Student',
+                'year_of_admission': '2026',
+                'dob': '01-01-2006',
+                'stream': 'SFM',
+                'mobile_number': '9876543214',
+                'status': True,
+                'email': 'existing.student@example.com',
+                'role_id': self.student_role.id,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            serializer.errors['email'][0],
+            'A user with this email already exists.'
+        )
+
     def test_update_student_syncs_academic_department_to_user(self):
         serializer = StudentSerializer(
             data={

@@ -115,6 +115,21 @@ class StudentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('A student with this register number already exists.')
         return value
 
+    def validate_email(self, value):
+        if value in (None, ''):
+            return None
+
+        email = str(value).strip()
+        if not email:
+            return None
+
+        queryset = User.objects.filter(email__iexact=email)
+        if self.instance and self.instance.user_id_id:
+            queryset = queryset.exclude(pk=self.instance.user_id_id)
+        if queryset.exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return email
+
     def validate_name(self, value):
         value = str(value).strip()
         if not value:
