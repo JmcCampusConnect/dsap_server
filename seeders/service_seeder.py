@@ -82,7 +82,7 @@ def run() -> dict[str, Any]:
                     "service_department_id": coe_dept,
                     "base_fee": svc_data["base_fee"],
                     "sla_days": svc_data["sla_days"],
-                    "status": "ENABLED",
+                    "status": True,
                     "description": svc_data.get("description", ""),
                 },
             )
