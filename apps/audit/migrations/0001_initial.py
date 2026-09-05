@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 ('model_name', models.CharField(blank=True, max_length=100, null=True)),
                 ('object_id', models.CharField(blank=True, max_length=100, null=True)),
                 ('object_repr', models.CharField(blank=True, max_length=200)),
-                ('action', models.CharField(choices=[('CREATE', 'Create'), ('UPDATE', 'Update'), ('DELETE', 'Delete'), ('VIEW', 'View'), ('LOGIN', 'Login'), ('LOGOUT', 'Logout'), ('UPLOAD', 'Upload'), ('EXPORT', 'Export'), ('IMPORT', 'Import')], max_length=10)),
+                ('action', models.CharField(choices=[('CREATE', 'Create'), ('UPDATE', 'Update'), ('DELETE', 'Delete'), ('VIEW', 'View'), ('LOGIN', 'Login'), ('LOGOUT', 'Logout'), ('UPLOAD', 'Upload'), ('EXPORT', 'Export'), ('IMPORT', 'Import'), ('LOGIN_SUCCESS', 'Login Success'), ('LOGIN_FAILURE', 'Login Failure'), ('REFRESH', 'Token Refresh'), ('REUSE_DETECTED', 'Token Reuse Detected'), ('LOGOUT_ALL', 'Logout All Sessions'), ('VALIDATE_MISMATCH', 'Role/privilege Mismatch')], max_length=50)),
                 ('changes', models.JSONField(blank=True, default=dict)),
                 ('user_id', models.CharField(blank=True, max_length=100, null=True)),
                 ('user_name', models.CharField(blank=True, max_length=200, null=True)),

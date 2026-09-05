@@ -50,7 +50,9 @@ class ValidateTokenSerializer(serializers.Serializer):
     role_id = serializers.IntegerField(allow_null=True)
     service_department_id = serializers.IntegerField(allow_null=True)
     is_active = serializers.BooleanField()
+    department = serializers.CharField(allow_null=True, allow_blank=True)
     menus = serializers.ListField(child=serializers.CharField())
+    session_started_at = serializers.IntegerField(allow_null=True)
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(help_text="Refresh token to blacklist")
