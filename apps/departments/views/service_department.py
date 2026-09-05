@@ -95,14 +95,31 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         new_data = self.get_serializer(updated_instance).data
 
         changes = {}
+        status_changed = False
+        old_status = old_data.get('status', '').lower()
+        new_status = new_data.get('status', '').lower()
+        
         for key, new_value in new_data.items():
             old_value = old_data.get(key)
             if old_value != new_value:
                 changes[key] = {"old": old_value, "new": new_value}
+                if key == 'status':
+                    status_changed = True
+
+        # Log as ACTIVATE or DEACTIVATE if only status is changing
+        if status_changed and len(changes) == 1:
+            if old_status == 'active' and new_status == 'inactive':
+                action = "DEACTIVATE"
+            elif old_status == 'inactive' and new_status == 'active':
+                action = "ACTIVATE"
+            else:
+                action = "UPDATE"
+        else:
+            action = "UPDATE"
 
         AuditLog.log(
             request=self.request,
-            action="UPDATE",
+            action=action,
             obj=updated_instance,
             changes=changes,
         )
@@ -119,7 +136,7 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
         AuditLog.log(
             request=request,
-            action="DELETE",
+            action="DEACTIVATE",
             obj=department,
             object_id=object_id,
             changes=snapshot,

@@ -50,7 +50,7 @@ class AcademicDepartment(models.Model):
     branch = models.CharField(max_length=100)
     type = models.CharField(max_length=100)
     category = models.CharField(max_length=100)
-    status = models.CharField(max_length=10, default='ACTIVE')
+    status = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

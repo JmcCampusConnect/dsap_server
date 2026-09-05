@@ -32,6 +32,7 @@ def run() -> dict[str, Any]:
             "year_of_admission": "2024-2026",
             "section": "A",
             "mobile_number": "9876543210",
+            "status": True,
         },
         {
             "register_number": "24MCA064",
@@ -41,6 +42,7 @@ def run() -> dict[str, Any]:
             "year_of_admission": "2024-2026",
             "section": "A",
             "mobile_number": "9876543211",
+            "status": True,
         },
         {
             "register_number": "24MCA065",
@@ -50,6 +52,7 @@ def run() -> dict[str, Any]:
             "year_of_admission": "2024-2026",
             "section": "A",
             "mobile_number": "9876543212",
+            "status": True,
         },
         {
             "register_number": "24MCA066",
@@ -59,6 +62,7 @@ def run() -> dict[str, Any]:
             "year_of_admission": "2024-2026",
             "section": "A",
             "mobile_number": "9876543213",
+            "status": True,
         },
     ]
 
@@ -93,7 +97,7 @@ def run() -> dict[str, Any]:
                 "email": data["email"],
                 "password_hash": default_password,
                 "role_id": student_role,
-                "is_active": True,
+                "is_active": data["status"],
             },
         )
         if user_created:
@@ -111,7 +115,7 @@ def run() -> dict[str, Any]:
                 "section": data["section"],
                 "stream": Student.StreamChoices.SFM,  
                 "mobile_number": data["mobile_number"],
-                "status": "ACTIVE",
+                "status": data["status"],
             },
         )
 

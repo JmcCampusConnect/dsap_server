@@ -21,6 +21,10 @@ def run() -> dict[str, Any]:
 
     departments = [
         {"code": "COE", "name": "Controller of Examinations", "status": "ACTIVE"},
+        {"code": "ADM", "name": "Admissions", "status": "ACTIVE"},
+        {"code": "REG", "name": "Registration", "status": "ACTIVE"},
+        {"code": "FIN", "name": "Finance", "status": "ACTIVE"},
+        {"code": "LIB", "name": "Library", "status": "ACTIVE"},
     ]
 
     created = 0
@@ -47,10 +51,10 @@ def run() -> dict[str, Any]:
                 changed = True
             if changed:
                 updated += 1
-                print(f"  Updated department: {dept.code} — {dept.name}")
+                print(f"  Updated department: {dept.code} - {dept.name}")
             else:
                 existing += 1
-                print(f"  Department already exists and is up‑to‑date: {dept.code}")
+                print(f"  Department already exists and is up-to-date: {dept.code}")
 
     print(
         f"\nService department seeding completed. "

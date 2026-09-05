@@ -20,11 +20,10 @@ class Service(models.Model):
     )
 
     sla_days = models.SmallIntegerField(default=7)
+    
+    description = models.TextField(blank=True, null=True)
 
-    status = models.CharField(
-        max_length=10,
-        default='ENABLED'
-    )
+    status = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
