@@ -15,13 +15,8 @@ class AuditLog(models.Model):
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
         ('IMPORT', 'Import'),
-        # ----- New session management actions -----
-        ('LOGIN_SUCCESS', 'Login Success'),
-        ('LOGIN_FAILURE', 'Login Failure'),
-        ('REFRESH', 'Token Refresh'),
-        ('REUSE_DETECTED', 'Token Reuse Detected'),
-        ('LOGOUT_ALL', 'Logout All Sessions'),
-        ('VALIDATE_MISMATCH', 'Role/privilege Mismatch'),
+        ('LOGIN', 'Login'),
+        ('LOGOUT', 'Logout'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)
