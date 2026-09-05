@@ -102,7 +102,6 @@ class UserViewSet(viewsets.ModelViewSet):
     def export_excel(self, request):
         qs = self.get_queryset().select_related(
             "role_id",
-            "service_department_id",
         )
 
         wb = openpyxl.Workbook()
@@ -113,24 +112,17 @@ class UserViewSet(viewsets.ModelViewSet):
             "Username",
             "Email",
             "Role",
-            "Service Department",
             "Status",
         ]
         ws.append(headers)
 
         for user in qs:
             role_name = user.role_id.name if user.role_id else ""
-            department_name = (
-                user.service_department_id.name
-                if user.service_department_id
-                else ""
-            )
 
             ws.append([
                 user.username,
                 user.email,
                 role_name,
-                department_name,
                 "Active" if user.is_active else "Inactive",
             ])
 
@@ -256,12 +248,6 @@ class UserViewSet(viewsets.ModelViewSet):
             role_name = (
                 str(row[2]).strip()
                 if len(row) > 2 and row[2] is not None
-                else ""
-            )
-
-            department_name = (
-                str(row[3]).strip()
-                if len(row) > 3 and row[3] is not None
                 else ""
             )
 
