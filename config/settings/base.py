@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'csp.middleware.CSPMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -73,6 +74,23 @@ TEMPLATES = [
     },
 ]
 
+# ----------------------------------------------------------------------
+# Content Security Policy (production specification)
+# ----------------------------------------------------------------------
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'",)
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com")
+CSP_IMG_SRC = ("'self'", "data:")
+CSP_CONNECT_SRC = ("'self'", "https://api.yourcollege.edu")  # ! CRITICAL: Must include our backend domain
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_BASE_URI = ("'self'",)
+CSP_FORM_ACTION = ("'self'",)
+
+# Start with Report-Only mode as recommended in the guide
+CSP_REPORT_ONLY = True  # Set to False after validating violations
+CSP_REPORT_URI = "/api/csp-report/"
+
 WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
@@ -85,6 +103,16 @@ AUTHENTICATION_BACKENDS = [
     "apps.accounts.backends.CommonUserBackend",
 ]
 
+# ----------------------------------------------------------------------
+# JWT & Cookie lifetimes (aligned with specification)
+# ----------------------------------------------------------------------
+JWT_ACCESS_TOKEN_LIFETIME_MIN = int(os.environ.get('JWT_ACCESS_TOKEN_LIFETIME_MIN', '15'))   # 15 min
+JWT_REFRESH_TOKEN_LIFETIME_DAYS = int(os.environ.get('JWT_REFRESH_TOKEN_LIFETIME_DAYS', '7'))  # 7 days
+REFRESH_COOKIE_PERSISTENT_AGE = 60 * 60 * 24 * JWT_REFRESH_TOKEN_LIFETIME_DAYS
+
+# ----------------------------------------------------------------------
+# Django REST Framework
+# ----------------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -105,9 +133,12 @@ REST_FRAMEWORK = {
     },
 }
 
+# ----------------------------------------------------------------------
+# SimpleJWT Configuration
+# ----------------------------------------------------------------------
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=JWT_ACCESS_TOKEN_LIFETIME_MIN),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=JWT_REFRESH_TOKEN_LIFETIME_DAYS),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
@@ -118,8 +149,12 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
     'JTI_CLAIM': 'jti',
+    'REFRESH_TOKEN_CLASS': 'apps.accounts.tokens.CustomRefreshToken',
 }
 
+# ----------------------------------------------------------------------
+# CORS
+# ----------------------------------------------------------------------
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
@@ -131,6 +166,16 @@ else:
     ]
 CORS_ALLOW_CREDENTIALS = True
 
+# ----------------------------------------------------------------------
+# CSRF Cookie Hardening (defense‑in‑depth)
+# ----------------------------------------------------------------------
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = 'Strict'
+
+# ----------------------------------------------------------------------
+# Password Validation
+# ----------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},

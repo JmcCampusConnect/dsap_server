@@ -15,13 +15,20 @@ class AuditLog(models.Model):
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
         ('IMPORT', 'Import'),
+        # ----- New session management actions -----
+        ('LOGIN_SUCCESS', 'Login Success'),
+        ('LOGIN_FAILURE', 'Login Failure'),
+        ('REFRESH', 'Token Refresh'),
+        ('REUSE_DETECTED', 'Token Reuse Detected'),
+        ('LOGOUT_ALL', 'Logout All Sessions'),
+        ('VALIDATE_MISMATCH', 'Role/privilege Mismatch'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)
     model_name = models.CharField(max_length=100, blank=True, null=True)
     object_id = models.CharField(max_length=100, blank=True, null=True)
     object_repr = models.CharField(max_length=200, blank=True)
-    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
     changes = models.JSONField(default=dict, blank=True)
     user_id = models.CharField(max_length=100, blank=True, null=True)
     user_name = models.CharField(max_length=200, blank=True, null=True)

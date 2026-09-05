@@ -11,8 +11,9 @@ class IsSystemAdmin(permissions.BasePermission):
     """ Allows access only to SYSTEM_ADMIN users """
     def has_permission(self, request, view):
         return bool(
-            request.user and 
-            request.user.is_authenticated and 
+            request.user and
+            request.user.is_authenticated and
+            request.user.is_active and
             request.user.has_role(Roles.SYSTEM_ADMIN)
         )
 
@@ -21,6 +22,7 @@ class IsServiceDeptAdmin(permissions.BasePermission):
         return bool(
             request.user and 
             request.user.is_authenticated and 
+            request.user.is_active and
             request.user.has_role(Roles.SERVICE_DEPT_ADMIN)
         )
         
@@ -29,6 +31,7 @@ class IsServiceDeptStaff(permissions.BasePermission):
         return bool(
             request.user and 
             request.user.is_authenticated and 
+            request.user.is_active and
             request.user.has_role(Roles.SERVICE_DEPT_STAFF)
         )
 
@@ -37,6 +40,7 @@ class IsStudent(permissions.BasePermission):
         return bool(
             request.user and 
             request.user.is_authenticated and
+            request.user.is_active and
             request.user.has_role(Roles.STUDENT)
         )
         
@@ -45,12 +49,13 @@ class IsTeachingStaff(permissions.BasePermission):
         return bool(
             request.user and 
             request.user.is_authenticated and
+            request.user.is_active and
             request.user.has_role(Roles.SUBJECT_TEACHING_STAFF)
         )
 class IsOwnServiceDepartment(permissions.BasePermission):
     """ List: allow dept roles. Object: same service_department_id or SYSTEM_ADMINN bypass """
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user or not request.user.is_active or not request.user.is_authenticated:
             return False
         return request.user.has_any_role([
             Roles.SYSTEM_ADMIN,
@@ -69,7 +74,7 @@ class IsOwnServiceDepartment(permissions.BasePermission):
 
 class IsOwnAcademicDepartment(permissions.BasePermission):
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user or not request.user.is_active or not request.user.is_authenticated:
             return False
         return request.user.has_any_role([
             Roles.SUBJECT_TEACHING_STAFF,
