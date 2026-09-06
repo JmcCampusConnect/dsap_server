@@ -15,8 +15,6 @@ class AuditLog(models.Model):
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
         ('IMPORT', 'Import'),
-        ('LOGIN', 'Login'),
-        ('LOGOUT', 'Logout'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)

@@ -40,7 +40,7 @@ def _set_refresh_cookie(response, refresh_token: str, max_age: int = None) -> No
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         refresh_token,
-        max_age=max_age,                # None → session cookie
+        max_age=max_age,
         httponly=True,
         secure=COOKIE_SECURE,
         samesite="Strict",
@@ -57,7 +57,7 @@ def get_max_absolute_lifetime(user, remember_me: bool) -> int | None:
     or None if no limit should be enforced.
     Matches the specification (§5.6) and role_seeder.py roles.
     """
-    role = user.role_name  # e.g. 'SYSTEM_ADMIN', 'STUDENT', etc.
+    role = user.role_name
 
     # Admins (both system and service department)
     if role in ('SYSTEM_ADMIN', 'SERVICE_DEPT_ADMIN'):
@@ -75,8 +75,6 @@ def get_max_absolute_lifetime(user, remember_me: bool) -> int | None:
             # Spec says "session only" but we add a safety cap (30 days)
             # to prevent indefinite sessions if browser never closes.
             return 30 * 24 * 3600  # 30 days (optional but recommended)
-
-    # Fallback: no restriction for unknown roles (should not happen)
     return None
 
 
@@ -90,11 +88,13 @@ class LoginView(TokenObtainPairView):
     throttle_scope = "login"
 
     def post(self, request, *args, **kwargs):
+        user = None
         try:
             # 1) Validate credentials via the custom serializer
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             user = serializer.user
+            
             refresh_token_str = serializer.validated_data.get('refresh')
             remember = request.data.get('remember', False)
 
@@ -116,8 +116,8 @@ class LoginView(TokenObtainPairView):
             # 5) Audit: login success
             AuditLog.log(
                 request=request,
-                action='LOGIN_SUCCESS',
-                object_repr=f"User {user.username} logged in",
+                action='LOGIN',
+                object_repr=f"User logged in" + (f" ({user.username})"),
                 changes={'remember': remember}
             )
 
@@ -128,7 +128,7 @@ class LoginView(TokenObtainPairView):
             username = request.data.get('username', 'unknown')
             AuditLog.log(
                 request=request,
-                action='LOGIN_FAILURE',
+                action='LOGIN',
                 object_repr=f"Failed login for {username}",
                 changes={'username': username, 'error': str(e)}
             )
@@ -138,8 +138,8 @@ class LoginView(TokenObtainPairView):
             # Catch‑all for unexpected errors
             AuditLog.log(
                 request=request,
-                action='LOGIN_FAILURE',
-                object_repr="Unexpected login error",
+                action='LOGIN',
+                object_repr=(f"Unexpected login error ({user.username})" if user else "Unexpected login error"),
                 changes={'error': str(e)}
             )
             raise
@@ -164,17 +164,6 @@ class ValidateTokenView(APIView):
         # Extract claims from the access token
         access_payload = request.auth.payload
         session_started_at = access_payload.get('session_started_at')
-        token_role = access_payload.get('role')
-
-        # (Optional) audit: role mismatch detection
-        db_role = user.role_name or ""
-        if token_role and token_role != db_role:
-            AuditLog.log(
-                request=request,
-                action='VALIDATE_MISMATCH',
-                object_repr=f"Role mismatch for {user.username}",
-                changes={'token_role': token_role, 'db_role': db_role}
-            )
 
         # Build department string based on the user's role
         role_name = user.role_name or ""
@@ -206,7 +195,7 @@ class ValidateTokenView(APIView):
 
 
 # ----------------------------------------------------------------------
-# VIEW: Refresh Token (with rotation, reuse detection, absolute cap)
+# VIEW: Refresh Token (with rotation, absolute cap)
 # ----------------------------------------------------------------------
 class CookieTokenRefreshView(APIView):
     permission_classes = [AllowAny]
@@ -225,13 +214,6 @@ class CookieTokenRefreshView(APIView):
             # Invalid token – delete cookie and audit
             response = Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
-
-            AuditLog.log(
-                request=request,
-                action='REUSE_DETECTED',
-                object_repr="Invalid refresh token used",
-                changes={'error': str(e)}
-            )
             return response
 
         # Retrieve user and ensure active
@@ -280,13 +262,6 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
-
-            AuditLog.log(
-                request=request,
-                action='REUSE_DETECTED',
-                object_repr=f"Reuse detected for user {user.username}",
-                changes={'user_id': user.id}
-            )
             return response
 
         # Blacklist the old token (rotation)
@@ -299,13 +274,6 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
-
-            AuditLog.log(
-                request=request,
-                action='REUSE_DETECTED',
-                object_repr=f"Reuse detected (already blacklisted) for {user.username}",
-                changes={'user_id': user.id}
-            )
             return response
 
         # ----- Create new access token with claims -----
@@ -317,15 +285,6 @@ class CookieTokenRefreshView(APIView):
         response = Response({"accessToken": str(new_access)}, status=status.HTTP_200_OK)
         max_age = settings.REFRESH_COOKIE_PERSISTENT_AGE if remember_me else None
         _set_refresh_cookie(response, str(new_refresh), max_age=max_age)
-
-        # Audit: successful refresh
-        AuditLog.log(
-            request=request,
-            action='REFRESH',
-            object_repr=f"Token refreshed for {user.username}",
-            changes={'user_id': user.id}
-        )
-
         return response
 
 
@@ -376,14 +335,6 @@ class LogoutAllView(APIView):
 
         for token in tokens:
             BlacklistedToken.objects.get_or_create(token=token)
-
-        # Audit
-        AuditLog.log(
-            request=request,
-            action='LOGOUT_ALL',
-            object_repr=f"User {user.username} logged out from all devices",
-            changes={'revoked_count': count}
-        )
 
         response = Response(
             {'detail': f'All {count} sessions logged out successfully'},
