@@ -118,7 +118,8 @@ class LoginView(TokenObtainPairView):
                 request=request,
                 action='LOGIN',
                 object_repr=f"User logged in" + (f" ({user.username})"),
-                changes={'remember': remember}
+                changes={'remember': remember, 'success': True},
+                user=user
             )
 
             return response
