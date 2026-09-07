@@ -14,7 +14,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 
 from apps.accounts.tokens import CustomRefreshToken
 from apps.audit.models import AuditLog
-from ..serializers import CustomTokenObtainPairSerializer, ValidateTokenSerializer, LogoutSerializer
+from ..serializers import CustomTokenObtainPairSerializer, ValidateTokenSerializer
 from ..role_constants import get_accessible_menus
 from ..models import User
 
@@ -126,23 +126,10 @@ class LoginView(TokenObtainPairView):
 
         except AuthenticationFailed as e:
             # Audit: login failure
-            username = request.data.get('username', 'unknown')
-            AuditLog.log(
-                request=request,
-                action='LOGIN',
-                object_repr=f"Failed login for {username}",
-                changes={'username': username, 'error': str(e)}
-            )
-            raise  # re-raise to let DRF return 401
+            raise
 
         except Exception as e:
             # Catch‑all for unexpected errors
-            AuditLog.log(
-                request=request,
-                action='LOGIN',
-                object_repr=(f"Unexpected login error ({user.username})" if user else "Unexpected login error"),
-                changes={'error': str(e)}
-            )
             raise
 
 
@@ -313,8 +300,8 @@ class LogoutView(APIView):
         AuditLog.log(
             request=request,
             action='LOGOUT',
-            object_repr=f"User logged out" + (f" ({user.username})" if user else ""),
-            changes={'user_id': user.id if user else None}
+            object_repr=f"User logged out" + (f" ({user.username})"),
+            changes={'user_id': user.id}
         )
 
         response = Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
@@ -336,6 +323,14 @@ class LogoutAllView(APIView):
 
         for token in tokens:
             BlacklistedToken.objects.get_or_create(token=token)
+            
+        # Audit: Logout for all sessions
+        AuditLog.log(
+            request=request,
+            action='LOGOUT',
+            object_repr=f"User logged out from all sessions ({user.username})",
+            changes={'user_id': user.id, 'sessions_logged_out': count}
+        )
 
         response = Response(
             {'detail': f'All {count} sessions logged out successfully'},
