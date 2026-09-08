@@ -15,8 +15,6 @@ class AuditLog(models.Model):
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
         ('IMPORT', 'Import'),
-        ('LOGIN', 'Login'),
-        ('LOGOUT', 'Logout'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)
@@ -47,7 +45,7 @@ class AuditLog(models.Model):
         return f"{self.action} - {self.object_repr} - {self.created_at}"
 
     @classmethod
-    def log(cls, request, action, obj=None, object_repr='', changes=None, object_id=None, app_label='', model_name=''):
+    def log(cls, request, action, obj=None, object_repr='', changes=None, object_id=None, app_label='', model_name='', user=None):
         resolved_app_label = app_label or ''
         resolved_model_name = model_name or ''
         resolved_object_id = str(object_id) if object_id is not None else ''
@@ -80,7 +78,10 @@ class AuditLog(models.Model):
             'request_path': request.path if request else '',
         }
         
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
+        if user:
+            audit_data['user_id'] = str(user.id)
+            audit_data['user_name'] = user.username
+        elif request and hasattr(request, 'user') and request.user.is_authenticated:
             audit_data['user_id'] = str(request.user.id)
             audit_data['user_name'] = request.user.username
             
