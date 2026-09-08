@@ -26,4 +26,7 @@ urlpatterns = [
 
     # Audit Logs
     path("api/audit-logs/", include("apps.audit.urls")),
+
+    # Requests
+    path("api/requests/", include("apps.requests.urls")),
 ]
