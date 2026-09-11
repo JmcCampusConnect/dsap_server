@@ -24,6 +24,7 @@ SEEDERS = [
     "service_document_seeder",
     "workflow_seeder",
     "student_seeder",
+    "request_seeder",
 ]
 
 
