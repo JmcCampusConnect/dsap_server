@@ -17,3 +17,15 @@ class IsStudent(permissions.BasePermission):
             return False
 
         return hasattr(user, 'student') and user.student is not None
+
+class IsStudentOwner(permissions.BasePermission):
+    """
+    Object-level guard: the authenticated student may only act on their own requests.
+    Assumes `IsStudent` has already validated role + profile at the permission level.
+    """
+
+    def has_object_permission(self, request, view, obj):
+        student = getattr(request.user, 'student', None)
+        if not student:
+            return False
+        return obj.student_id_id == student.id

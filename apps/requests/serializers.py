@@ -3,8 +3,67 @@ from apps.documents.models import Document
 from apps.notifications.models import Notification
 from apps.requests.models import Request, RequestFieldValue
 from apps.workflow.models import WorkflowHistory
+from apps.payments.models import Payment
+from apps.services.models import Service
+
+# 1. WRITE / INPUT SERIALIZERS
+class RequestCreateSerializer(serializers.Serializer):
+    """Input payload for POST /api/requests/ — creates a DRAFT request for a service."""
+
+    service_id = serializers.IntegerField()
+
+    def validate_service_id(self, value):
+        try:
+            service = Service.objects.get(pk=value)
+        except Service.DoesNotExist:
+            raise serializers.ValidationError("Service not found.")
+        if not service.status:
+            raise serializers.ValidationError("Service is not currently available.")
+        return value
 
 
+class RequestFieldValueWriteSerializer(serializers.Serializer):
+    """Single field entry inside a request update payload."""
+
+    field_id = serializers.IntegerField()
+    field_value = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+
+
+class RequestUpdateSerializer(serializers.Serializer):
+    """Input payload for PUT /api/requests/{id}/ — replace-strategy upsert of field values."""
+
+    field_values = RequestFieldValueWriteSerializer(many=True)
+
+
+class DocumentUploadSerializer(serializers.Serializer):
+    """
+    Validates a document upload request. Enforces a 10 MB size cap and a small
+    allow-list of MIME types to keep storage predictable.
+    """
+
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    ALLOWED_CONTENT_TYPES = {
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }
+
+    service_document_id = serializers.IntegerField()
+    file = serializers.FileField()
+
+    def validate_file(self, value):
+        if value.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError("File size exceeds the 10 MB limit.")
+        content_type = getattr(value, 'content_type', None)
+        if content_type and content_type not in self.ALLOWED_CONTENT_TYPES:
+            raise serializers.ValidationError(f"Unsupported file type: {content_type}")
+        return value
+
+# 2. READ / MODEL SERIALIZERS
 class RequestFieldValueSerializer(serializers.ModelSerializer):
     field_label = serializers.CharField(source='field_id.field_label', read_only=True)
     field_type = serializers.CharField(source='field_id.field_type', read_only=True)
@@ -41,6 +100,21 @@ class RequestDocumentSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            'id',
+            'request_id',
+            'amount',
+            'gateway_txn_id',
+            'payment_method',
+            'payment_status',
+            'paid_at',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields
 
 class WorkflowHistorySerializer(serializers.ModelSerializer):
     step_name = serializers.SerializerMethodField()
@@ -100,7 +174,7 @@ class RequestNotificationSerializer(serializers.ModelSerializer):
             'created_at',
         ]
 
-
+# 3. COMPOSITE SERIALIZERS
 class MyRequestListSerializer(serializers.ModelSerializer):
     service_id = serializers.IntegerField(source='service_id.id', read_only=True)
     service_name = serializers.CharField(source='service_id.name', read_only=True)
