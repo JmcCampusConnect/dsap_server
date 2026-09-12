@@ -189,3 +189,19 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+
+# ----------------------------------------------------------------------
+# Media storage (request document uploads)
+# Swappable via env in staging/production without touching call sites.
+# ----------------------------------------------------------------------
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}

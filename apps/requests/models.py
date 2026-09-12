@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 
 
 class Request(models.Model):
@@ -57,10 +58,34 @@ class Request(models.Model):
 
     def __str__(self):
         return self.request_number
+    
+    @classmethod
+    def generate_request_number(cls, dept_code: str) -> str:
+        """
+        Produce a request number in the format {DEPT_CODE}{YYYY}{seq:05d}, e.g. COE202600145.
+        The sequence is scoped per department per year. A row lock on the latest
+        matching request is used to prevent duplicates under concurrent creation.
+        """
+        year = timezone.now().year
+        prefix = f"{(dept_code or 'REQ').upper()}{year}"
 
+        with transaction.atomic():
+            latest = (
+                cls.objects
+                .select_for_update()
+                .filter(request_number__startswith=prefix)
+                .order_by('-request_number')
+                .first()
+            )
 
-from django.db import models
+            next_seq = 1
+            if latest:
+                try:
+                    next_seq = int(latest.request_number[len(prefix):]) + 1
+                except (ValueError, TypeError):
+                    next_seq = 1
 
+        return f"{prefix}{next_seq:05d}"
 
 class RequestFieldValue(models.Model):
 
