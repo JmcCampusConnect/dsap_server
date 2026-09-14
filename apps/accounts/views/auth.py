@@ -15,7 +15,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from apps.accounts.tokens import CustomRefreshToken
 from apps.audit.models import AuditLog
 from ..serializers import CustomTokenObtainPairSerializer, ValidateTokenSerializer
-from ..role_constants import get_accessible_menus
+from ..role_constants import get_accessible_menus, get_capabilities
 from ..models import User
 
 
@@ -165,6 +165,7 @@ class ValidateTokenView(APIView):
         # For other roles, department remains empty
 
         menus = get_accessible_menus(role_name)
+        capabilities = get_capabilities(role_name)
 
         data = {
             'username': user.username,
@@ -174,6 +175,7 @@ class ValidateTokenView(APIView):
             'is_active': user.is_active,
             'department': department,
             'menus': menus,
+            'capabilities': capabilities,
             'session_started_at': session_started_at,
         }
 

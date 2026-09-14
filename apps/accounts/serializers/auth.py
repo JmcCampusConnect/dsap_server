@@ -52,16 +52,8 @@ class ValidateTokenSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
     department = serializers.CharField(allow_null=True, allow_blank=True)
     menus = serializers.ListField(child=serializers.CharField())
+    capabilities = serializers.ListField(child=serializers.CharField())
     session_started_at = serializers.IntegerField(allow_null=True)
-
-class LogoutSerializer(serializers.Serializer):
-    refresh = serializers.CharField(help_text="Refresh token to blacklist")
-
-    def validate_refresh(self, value):
-        if not value:
-            raise serializers.ValidationError("Refresh token is required.")
-        return value
-
 
 class ResetPasswordSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, required=True)

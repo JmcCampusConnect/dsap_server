@@ -284,7 +284,6 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
             'step_order': step.step_order,
             'step_name': step.step_name,
             'action_type': step.action_type,
-            'allowed_actions': step.allowed_actions,
             'responsible_role': step.responsible_role_id.name if step.responsible_role_id else None,
         }
 

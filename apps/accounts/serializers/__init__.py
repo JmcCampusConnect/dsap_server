@@ -1,7 +1,6 @@
 from .auth import (
     CustomTokenObtainPairSerializer,
     ValidateTokenSerializer,
-    LogoutSerializer,
     ResetPasswordSerializer,
 )
 

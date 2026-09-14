@@ -1,5 +1,5 @@
 from rest_framework import permissions
-from.role_constants import Roles
+from .role_constants import Roles
 
 def _get_dept_id(obj, field_name: str):
     """ Safely get department id from FK object or raw id. """
