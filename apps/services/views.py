@@ -2,7 +2,8 @@ from rest_framework import viewsets, status, serializers
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
 
@@ -10,6 +11,12 @@ from apps.audit.models import AuditLog
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
 from apps.accounts.models import Role
+from apps.accounts.role_constants import Roles
+from apps.accounts.permissions import (
+    IsSystemAdmin,
+    IsServiceDeptAdmin,
+    IsServiceDeptStaff,
+)
 from apps.workflow.constants import ACTION_TYPE_CHOICES, ALLOWED_ACTION_CHOICES
 from apps.services.serializers import (
     ServiceSerializer, 
@@ -35,17 +42,41 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     serializer_class = ServiceSerializer
     pagination_class = StandardPagination
+    
+    # Actions that must remain publicly accessible (student-facing directory)
+    PUBLIC_ACTIONS = {
+        "public_list",
+        "directory",
+        "detail_with_fields",
+        "department_list",
+        "search",
+        "filter_by_department",
+    }
 
     # ── Permissions ──────────────────────────────────────────────
     def get_permissions(self):
-        # TODO: Replace with [IsSystemAdmin | IsServiceDeptAdmin] in production
-        return [AllowAny()]
+        if self.action in self.PUBLIC_ACTIONS:
+            return [AllowAny()]
+        if self.action in {"create", "update", "partial_update", "destroy"}:
+            return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
+        # list / retrieve / options_list
+        return [
+            IsAuthenticated(),
+            (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
+        ]
+
 
     # ── QuerySet ─────────────────────────────────────────────────
     def get_queryset(self):
         qs = Service.objects.select_related("service_department_id").order_by(
             "-created_at"
         )
+        
+        # Department scoping for non-system-admin roles
+        user = self.request.user
+        if user.is_authenticated and not user.is_system_admin():
+            dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            qs = qs.filter(service_department_id=dept_id) if dept_id else qs.none()
 
         search = self.request.query_params.get("search", "").strip()
         if search:
@@ -79,9 +110,15 @@ class ServiceViewSet(viewsets.ModelViewSet):
     # ── Create (auto-generate code) ──────────────────────────────
     def perform_create(self, serializer):
         dept = serializer.validated_data["service_department_id"]
-        prefix = dept.code
+        user = self.request.user
 
-        # Find next available sequence number for this prefix
+        # Dept Admin can only create services in their own department
+        if user.has_role(Roles.SERVICE_DEPT_ADMIN):
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if user_dept_id is None or dept.id != user_dept_id:
+                raise PermissionDenied("You can only create services in your own department.")
+
+        prefix = dept.code
         existing_codes = (
             Service.objects.filter(code__startswith=f"{prefix}-")
             .values_list("code", flat=True)
@@ -227,7 +264,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         Get full service detail with fields and documents.
         Only if service is ENABLED (status=True).
         """
-        service = self.get_queryset().filter(status=True).first()
+        service = self.get_queryset().filter(pk=pk, status=True).first()
         if not service:
             return Response(
                 {'detail': 'Service not found or not enabled.'},
@@ -303,8 +340,13 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_permissions(self):
-        # TODO: Replace with proper admin permissions
-        return [AllowAny()]
+        if self.action in {"create", "update", "partial_update", "destroy", "reorder"}:
+            return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
+        # list / retrieve
+        return [
+            IsAuthenticated(),
+            (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
+        ]
 
     def get_queryset(self):
         """Get fields for a specific service"""
@@ -412,8 +454,13 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_permissions(self):
-        # TODO: Replace with proper admin permissions
-        return [AllowAny()]
+        if self.action in {"create", "update", "partial_update", "destroy"}:
+            return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
+        # list / retrieve
+        return [
+            IsAuthenticated(),
+            (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
+        ]
 
     def get_queryset(self):
         """Get documents for a specific service"""

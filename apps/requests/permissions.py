@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from apps.accounts.role_constants import Roles
 
 
 class IsStudent(permissions.BasePermission):
@@ -13,7 +14,7 @@ class IsStudent(permissions.BasePermission):
             return False
 
         role_name = getattr(getattr(user, 'role_id', None), 'name', None)
-        if role_name != 'STUDENT':
+        if role_name != Roles.STUDENT:
             return False
 
         return hasattr(user, 'student') and user.student is not None

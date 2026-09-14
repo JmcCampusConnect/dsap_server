@@ -23,7 +23,6 @@ class Roles:
     def department_scoped(cls) -> List[str]:
         return [cls.SERVICE_DEPT_ADMIN, cls.SERVICE_DEPT_STAFF]
 
-# For Django choices if needed
 ROLE_CHOICES = [(r, r) for r in Roles.all()]
 
 # -------------------------------------------------
@@ -32,38 +31,37 @@ ROLE_CHOICES = [(r, r) for r in Roles.all()]
 # -------------------------------------------------
 MENU_ACCESS_CONFIG = {
     # Common - all authenticated
-    "dashboard": Roles.all(),
+    "dashboard": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
+    "student_home": [Roles.STUDENT],
     "notifications": Roles.all(),
     "profile": Roles.all(),
 
-    # Old keys (keep for backward compat with your current frontend)
-    "users": [Roles.SYSTEM_ADMIN],
-    "students": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
-    "staff": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
-    "service-departments": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
-    "academic-departments": [Roles.SYSTEM_ADMIN],
-    "reports": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "settings": [Roles.SYSTEM_ADMIN],
-    "subjects": [Roles.SYSTEM_ADMIN, Roles.SUBJECT_TEACHING_STAFF],
-    "attendance": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
-    "results": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SUBJECT_TEACHING_STAFF, Roles.STUDENT],
-
-    # New canonical keys from Doc Section 9 (use these going forward)
+    # Student-only
     "service_directory": [Roles.STUDENT],
     "my_requests": [Roles.STUDENT],
-    "payment_history": [Roles.STUDENT],
-
+    "payment_history": [Roles.STUDENT, Roles.SYSTEM_ADMIN],
+    
+    # Requests (staff/admin)
     "pending_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "approved_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "rejected_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "completed_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-
-    "services": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    
+    # Management
+    "student_management": [Roles.SYSTEM_ADMIN],
+    "user_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "service_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "service_dept_management": [Roles.SYSTEM_ADMIN],
+    "academic_dept_management": [Roles.SYSTEM_ADMIN],
+    
+    # Reports
+    "reports": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
+    "subjects": [Roles.SYSTEM_ADMIN, Roles.SUBJECT_TEACHING_STAFF],
+    "attendance": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
+    "results": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SUBJECT_TEACHING_STAFF, Roles.STUDENT],
     "my_department": [Roles.SERVICE_DEPT_ADMIN],
 
-    # System Admin only - distinct from scoped list
-    "service_departments_full": [Roles.SYSTEM_ADMIN],
-    "academic_departments_full": [Roles.SYSTEM_ADMIN],
+    # System Admin only
     "notification_templates": [Roles.SYSTEM_ADMIN],
     "audit_log": [Roles.SYSTEM_ADMIN],
     "system_settings": [Roles.SYSTEM_ADMIN],
@@ -95,3 +93,12 @@ CAPABILITY_MAP = {
     "system_settings.manage": [Roles.SYSTEM_ADMIN],
     "report.view": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
 }
+
+def get_capabilities(role_name: str) -> list[str]:
+    if not role_name:
+        return []
+    return [
+        capability
+        for capability, roles in CAPABILITY_MAP.items()
+        if role_name in roles
+    ]
