@@ -1,93 +1,146 @@
-from django.contrib.auth.hashers import make_password
-from django.http import HttpResponse
-from django.db import transaction
 import openpyxl
+from django.contrib.auth.hashers import make_password
+from django.db import transaction
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets, filters
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-from ..models import User
-from ..serializers import (
-    UserSerializer,
-    ResetPasswordSerializer,
-)
 from apps.audit.models import AuditLog
-from ..permissions import IsSystemAdmin, IsServiceDeptAdmin, IsSelfOrSystemAdmin
+from ..models import User
+from ..permissions import IsOwnServiceDepartment, IsUserManager
 from ..role_constants import Roles
-
-
+from ..serializers import UserSerializer, ResetPasswordSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["username","email"]
 
+    # ------------------------------------------------------------------
+    # Permissions
+    # ------------------------------------------------------------------
     def get_permissions(self):
-        if self.action in ['me','retrieve']:
+        """
+        Action -> permission matrix (backend is the source of truth):
+
+        me                 : any authenticated user (self-service)
+        list/retrieve/export: role gate + dept ownership (403 cross-dept)
+        mutations          : SYSTEM_ADMIN | SERVICE_DEPT_ADMIN only,
+        still dept-scoped on the object
+        """
+        if self.action == "me":
             return [IsAuthenticated()]
-        if self.action in ['reset_password','activate']:
-            return [IsAuthenticated(), IsSelfOrSystemAdmin()]
-        return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
 
+        if self.action in ("list", "retrieve", "export_excel"):
+            return [IsAuthenticated(), IsOwnServiceDepartment()]
 
+        # create / update / partial_update / destroy /
+        # activate / reset_password / import_excel
+        return [IsAuthenticated(), IsUserManager(), IsOwnServiceDepartment()]
+
+    # ------------------------------------------------------------------
+    # Queryset
+    # ------------------------------------------------------------------
     def get_queryset(self):
+        """
+        Role-scoped queryset used by list/export.
+
+        The `service_department_id` query param is ONLY honoured for
+        SYSTEM_ADMIN. Department-scoped roles are pinned to their own
+        department regardless of any client-supplied value.
+        """
         user = self.request.user
-        qs = User.objects.select_related('role_id','service_department_id').all().order_by("id")
+        qs = (
+            User.objects.select_related(
+                "role_id", "service_department_id", "academic_department_id"
+            )
+            .all().
+            order_by("id")
+        )
+        
+        # Query-param filters reused by every scoped branch below.
+        role_id = self.request.query_params.get("role_id")
+        is_active = self.request.query_params.get("is_active")
+        
+        # --- SYSTEM_ADMIN: full visibility, optional filters -----------
         if user.is_system_admin():
-            role_id = self.request.query_params.get("role_id")
-            is_active = self.request.query_params.get("is_active")
+            service_dept_id = self.request.query_params.get("service_department_id")
+            if service_dept_id:
+                qs = qs.filter(service_department_id_id=service_dept_id)
             if role_id:
                 qs = qs.filter(role_id_id=role_id)
             if is_active is not None:
                 qs = qs.filter(is_active=is_active.lower() == "true")
             return qs
-        if user.has_role(Roles.SERVICE_DEPT_ADMIN):
-            # Only own department + self
-            dept_id = getattr(user.service_department_id, 'id', None) if user.service_department_id else None
-            if dept_id:
-                return qs.filter(service_department_id_id=dept_id)
-            return qs.filter(id=user.id)
-        # Staff/Student/Teaching can only see self
+        
+        # --- SERVICE_DEPT_ADMIN / SERVICE_DEPT_STAFF: own dept only ---
+        if user.has_role(
+            [Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF]
+        ):
+            user_dept = getattr(user, "service_department_id", None)
+            user_dept_id = getattr(user_dept, "id", None) if user_dept else None
+            
+            if user_dept_id is None:
+                # No department assigned -> avoid leaking anything beyond self.
+                qs = qs.filter(id=user.id)
+            else:
+                # SECURITY: ignore any caller-supplied service_department_id.
+                qs = qs.filter(service_department_id_id=user_dept_id)
+                
+            if role_id:
+                qs = qs.filter(role_id_id=role_id)
+            if is_active is not None:
+                qs = qs.filter(is_active=is_active.lower() == "true")
+            return qs
+        
+        # --- Any other role (students, teaching staff): self only -------
         return qs.filter(id=user.id)
     
     def get_object(self):
-        obj = super().get_object()
+        """
+        Resolve a user by pk from the *unscoped* table so out-of-scope
+        access is denied with 403 (via object permission) instead of
+        being masked by a 404. List scoping still lives in get_queryset.
+        """
+        queryset = User.objects.select_related(
+            "role_id", "service_department_id", "academic_department_id"
+        ).all()
+        
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        
+        obj = get_object_or_404(queryset, **filter_kwargs)
         self.check_object_permissions(self.request, obj)
         return obj
-
+    
+    # ------------------------------------------------------------------
+    # Mutations (audit trail preserved)
+    # ------------------------------------------------------------------
     def perform_create(self, serializer):
         instance = serializer.save()
-
-        changes = self.get_serializer(instance).data
 
         AuditLog.log(
             request=self.request,
             action="CREATE",
             obj=instance,
-            changes=changes,
+            changes=self.get_serializer(instance).data,
         )
 
     def perform_update(self, serializer):
         instance = self.get_object()
-       
-
         old_data = self.get_serializer(instance).data
-
         updated_instance = serializer.save()
-
         new_data = self.get_serializer(updated_instance).data
 
-        changes = {}
-
-        for key, new_value in new_data.items():
-            old_value = old_data.get(key)
-
-            if old_value != new_value:
-                changes[key] = {
-                    "old": old_value,
-                    "new": new_value,
-                }
+        changes = {
+            key: {"old": old_data.get(key), "new": new_value}
+            for key, new_value in new_data.items()
+            if old_data.get(key) != new_value
+        }
 
         if changes:
             
@@ -97,40 +150,50 @@ class UserViewSet(viewsets.ModelViewSet):
                 obj=updated_instance,
                 changes=changes,
             )
+            
+    def perform_destroy(self, instance):
+        if instance.id == self.request.user.id:
+            raise PermissionDenied("Cannot deactivate self.")
+
+        old_status = instance.is_active
+        instance.is_active = False
+        instance.save()
+
+        AuditLog.log(
+            request=self.request,
+            action="DEACTIVATE",
+            obj=instance,
+            changes={"is_active": {"old": old_status, "new": False}},
+        )
+
+    # ------------------------------------------------------------------
+    # Export (inherits scoping from get_queryset)
+    # ------------------------------------------------------------------
 
     @action(detail=False, methods=["get"], url_path="export")
     def export_excel(self, request):
-        qs = self.get_queryset().select_related(
-            "role_id",
-        )
+        qs = self.get_queryset().select_related("role_id")
 
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Users"
 
-        headers = [
-            "Username",
-            "Email",
-            "Role",
-            "Status",
-        ]
-        ws.append(headers)
+        ws.append(["Username", "Email", "Role", "Status"])
 
         for user in qs:
-            role_name = user.role_id.name if user.role_id else ""
-
-            ws.append([
-                user.username,
-                user.email,
-                role_name,
-                "Active" if user.is_active else "Inactive",
-            ])
+            ws.append(
+                [
+                    user.username,
+                    user.email,
+                    user.role_id.name if user.role_id else "",
+                    "Active" if user.is_active else "Inactive",
+                ]
+            )
 
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         response["Content-Disposition"] = "attachment; filename=users.xlsx"
-
         wb.save(response)
 
         AuditLog.log(
@@ -144,6 +207,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return response
     
+    # ------------------------------------------------------------------
+    # Import (Excel/CSV)
+    # ------------------------------------------------------------------
     @action(
         detail=False,
         methods=["post"],
@@ -151,12 +217,29 @@ class UserViewSet(viewsets.ModelViewSet):
         parser_classes=[MultiPartParser, FormParser],
     )
     def import_excel(self, request):
-        # Only system admin can import users
-        if not request.user.is_system_admin():
+        """
+        SYSTEM_ADMIN       : existing behaviour (no department assigned from file).
+        SERVICE_DEPT_ADMIN : every imported user is forced into the admin's own
+        department; only SERVICE_DEPT_STAFF role allowed.
+        SERVICE_DEPT_STAFF : 403.
+        """
+        if not request.user.has_any_role(
+            [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN]
+        ):
             return Response(
-                {"error": "Only system administrators can import users."},
+                {"error": "You do not have permission to import users."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+            
+        # Force department assignment for dept admins - never trust the file.
+        forced_service_dept = None
+        if request.user.has_role(Roles.SERVICE_DEPT_ADMIN):
+            forced_service_dept = request.user.service_department_id
+            if forced_service_dept is None:
+                return Response(
+                    {"error": "Your account is not assigned to a service department."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         file = request.FILES.get("file")
 
@@ -194,7 +277,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if (
             len(headers) < len(expected_headers)
-            or headers[:len(expected_headers)] != expected_headers
+            or headers[: len(expected_headers)] != expected_headers
         ):
             return Response(
                 {
@@ -226,10 +309,7 @@ class UserViewSet(viewsets.ModelViewSet):
             for role in User._meta.get_field("role_id").remote_field.model.objects.all()
         }
 
-       
-
         for row_idx, row in enumerate(rows[1:], start=2):
-
             if not any(row):
                 continue
 
@@ -329,6 +409,7 @@ class UserViewSet(viewsets.ModelViewSet):
                         password_hash="",
                         role_id=role_obj,
                         is_active=status_value == "active",
+                        service_department_id=forced_service_dept
                     )
                 )
 
@@ -342,7 +423,6 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
-
             User.objects.bulk_create(valid_users)
 
             AuditLog.log(
@@ -365,34 +445,18 @@ class UserViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
-
-    def perform_destroy(self, instance):
-        old_status = instance.is_active
-
-        if instance.id == self.request.user.id:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Cannot deactivate self")
-        instance.is_active = False
-        instance.save()
-
-        AuditLog.log(
-            
-            request=self.request,
-            action="DEACTIVATE",
-            obj=instance,
-            changes={
-                "is_active": {
-                    "old": old_status,
-                    "new": False,
-                }
-            },
-        )
-
+        
+    # ------------------------------------------------------------------
+    # Self-service
+    # ------------------------------------------------------------------
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
+    # ------------------------------------------------------------------
+    # Password reset / activate (scoped via get_object + permissions)
+    # ------------------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
         user = self.get_object()
@@ -426,7 +490,6 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
 
         old_status = user.is_active
-
         user.is_active = True
         user.save()
 

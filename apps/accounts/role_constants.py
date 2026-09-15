@@ -49,7 +49,7 @@ MENU_ACCESS_CONFIG = {
     
     # Management
     "student_management": [Roles.SYSTEM_ADMIN],
-    "user_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "user_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "service_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "service_dept_management": [Roles.SYSTEM_ADMIN],
     "academic_dept_management": [Roles.SYSTEM_ADMIN],
@@ -86,8 +86,9 @@ CAPABILITY_MAP = {
     "service_department.manage": [Roles.SERVICE_DEPT_ADMIN],
     "service_department.manage_all": [Roles.SYSTEM_ADMIN],
     "academic_department.manage": [Roles.SYSTEM_ADMIN],
+    "user.view": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "user.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
-    "student.manage": [Roles.SYSTEM_ADMIN],
+    "student.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "notification_template.manage": [Roles.SYSTEM_ADMIN],
     "audit_log.view": [Roles.SYSTEM_ADMIN],
     "system_settings.manage": [Roles.SYSTEM_ADMIN],
