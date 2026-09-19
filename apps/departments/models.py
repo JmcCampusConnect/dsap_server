@@ -60,3 +60,7 @@ class AcademicDepartment(models.Model):
 
     def __str__(self):
         return f"{self.code} ({self.stream}) - {self.degree}"
+    
+    @property
+    def name(self) -> str:
+        return f"{self.degree} - {self.branch}"

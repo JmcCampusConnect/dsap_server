@@ -25,10 +25,7 @@ class Roles:
 
 ROLE_CHOICES = [(r, r) for r in Roles.all()]
 
-# -------------------------------------------------
 # Menu Key -> Allowed Roles (Backend + Frontend SSOT)
-# Based on Role_Based_Menu_Structure.docx Section 9 + Frontend_Tasks example
-# -------------------------------------------------
 MENU_ACCESS_CONFIG = {
     # Common - all authenticated
     "dashboard": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
@@ -77,7 +74,6 @@ def get_accessible_menus(role_name: str) -> List[str]:
         return []
     return [menu for menu, roles in MENU_ACCESS_CONFIG.items() if role_name in roles]
 
-# Capability mapping for future navConfig.js style (request.submit etc)
 CAPABILITY_MAP = {
     "request.submit": [Roles.STUDENT],
     "request.track_own": [Roles.STUDENT],
@@ -88,7 +84,8 @@ CAPABILITY_MAP = {
     "academic_department.manage": [Roles.SYSTEM_ADMIN],
     "user.view": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "user.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
-    "student.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "user.import": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "student.manage": [Roles.SYSTEM_ADMIN],
     "notification_template.manage": [Roles.SYSTEM_ADMIN],
     "audit_log.view": [Roles.SYSTEM_ADMIN],
     "system_settings.manage": [Roles.SYSTEM_ADMIN],

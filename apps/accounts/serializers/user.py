@@ -1,8 +1,8 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
+from apps.departments.models import AcademicDepartment, ServiceDepartment
 from ..models import User, Role
 from ..role_constants import Roles
-from apps.departments.models import AcademicDepartment, ServiceDepartment
 
 
 class ServiceDepartmentBriefSerializer(serializers.ModelSerializer):
@@ -19,7 +19,7 @@ class AcademicDepartmentBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AcademicDepartment
-        fields = ["id", "code", "degree", "branch"]
+        fields = ["id", "code", "degree", "branch", "name"]
         read_only_fields = fields
 
 class UserSerializer(serializers.ModelSerializer):
@@ -27,14 +27,11 @@ class UserSerializer(serializers.ModelSerializer):
     role_id = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), required=False)
     password = serializers.CharField(write_only=True, required=False)
     
-    # Writable department references - the UI submits the numeric id.
-    # PrimaryKeyRelatedField (instead of IntegerField) so serialization
-    # correctly emits the raw FK id instead of coercing the related model.
+    # Writable FK ids (UI submits numeric ids).
     service_department_id = serializers.PrimaryKeyRelatedField(queryset=ServiceDepartment.objects.all(), required=False, allow_null=True)
     academic_department_id = serializers.PrimaryKeyRelatedField(queryset=AcademicDepartment.objects.all(),required=False, allow_null=True)
     
-    # Read-only nested payloads so the UI can render department names
-    # without additional API calls.
+    # Read-only nested payloads for UI rendering without extra calls.
     service_department = ServiceDepartmentBriefSerializer(
         source="service_department_id", read_only=True
     )
@@ -54,7 +51,7 @@ class UserSerializer(serializers.ModelSerializer):
     # Validation
     # ------------------------------------------------------------------
     def validate_role_id(self, value):
-        # Role assignment guard - the role engine stays the single source of truth.
+        # Role assignment guard: role engine is the SSOT.
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return value

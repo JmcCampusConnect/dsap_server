@@ -24,22 +24,13 @@ class UserViewSet(viewsets.ModelViewSet):
     # Permissions
     # ------------------------------------------------------------------
     def get_permissions(self):
-        """
-        Action -> permission matrix (backend is the source of truth):
-
-        me                 : any authenticated user (self-service)
-        list/retrieve/export: role gate + dept ownership (403 cross-dept)
-        mutations          : SYSTEM_ADMIN | SERVICE_DEPT_ADMIN only,
-        still dept-scoped on the object
-        """
+        # me: any authenticated user; reads: dept-scoped; mutations: admin + dept-scoped.
         if self.action == "me":
             return [IsAuthenticated()]
 
         if self.action in ("list", "retrieve", "export_excel"):
             return [IsAuthenticated(), IsOwnServiceDepartment()]
 
-        # create / update / partial_update / destroy /
-        # activate / reset_password / import_excel
         return [IsAuthenticated(), IsUserManager(), IsOwnServiceDepartment()]
 
     # ------------------------------------------------------------------
@@ -58,8 +49,9 @@ class UserViewSet(viewsets.ModelViewSet):
             User.objects.select_related(
                 "role_id", "service_department_id", "academic_department_id"
             )
-            .all().
-            order_by("id")
+            .exclude(role_id__name=Roles.STUDENT)
+            .all()
+            .order_by("id")
         )
         
         # Query-param filters reused by every scoped branch below.
@@ -77,20 +69,33 @@ class UserViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(is_active=is_active.lower() == "true")
             return qs
         
-        # --- SERVICE_DEPT_ADMIN / SERVICE_DEPT_STAFF: own dept only ---
-        if user.has_role(
-            [Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF]
-        ):
+        # --- SERVICE_DEPT_ADMIN: own dept only, self excluded ---
+        if user.has_role(Roles.SERVICE_DEPT_ADMIN):
             user_dept = getattr(user, "service_department_id", None)
             user_dept_id = getattr(user_dept, "id", None) if user_dept else None
-            
+
             if user_dept_id is None:
-                # No department assigned -> avoid leaking anything beyond self.
+                # Misconfigured admin — fall back to showing only self
                 qs = qs.filter(id=user.id)
             else:
-                # SECURITY: ignore any caller-supplied service_department_id.
+                qs = qs.filter(service_department_id_id=user_dept_id).exclude(id=user.id)
+
+            if role_id:
+                qs = qs.filter(role_id_id=role_id)
+            if is_active is not None:
+                qs = qs.filter(is_active=is_active.lower() == "true")
+            return qs
+
+        # --- SERVICE_DEPT_STAFF: own dept only, self included ---
+        if user.has_role(Roles.SERVICE_DEPT_STAFF):
+            user_dept = getattr(user, "service_department_id", None)
+            user_dept_id = getattr(user_dept, "id", None) if user_dept else None
+
+            if user_dept_id is None:
+                qs = qs.filter(id=user.id)
+            else:
                 qs = qs.filter(service_department_id_id=user_dept_id)
-                
+
             if role_id:
                 qs = qs.filter(role_id_id=role_id)
             if is_active is not None:
@@ -386,6 +391,23 @@ class UserViewSet(viewsets.ModelViewSet):
                 )
             else:
                 role_obj = roles[role_name]
+                
+            # Students are managed via Student Management, not here.
+            if role_obj is not None and role_obj.name == Roles.STUDENT:
+                row_errors.append(
+                    "Student accounts must be created via Student Management."
+                )
+                
+            # SERVICE_DEPT_ADMIN may only import SERVICE_DEPT_STAFF.
+            if (
+                request.user.has_role(Roles.SERVICE_DEPT_ADMIN)
+                and role_obj is not None
+                and role_obj.name != Roles.SERVICE_DEPT_STAFF
+            ):
+                row_errors.append(
+                    "Service Dept Admin can only import users with role "
+                    "'SERVICE_DEPT_STAFF'."
+                )
 
 
             # Status validation
@@ -485,7 +507,7 @@ class UserViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["post"], url_path="activate")
+    @action(detail=True, methods=["get"], url_path="activate")
     def activate(self, request, pk=None):
         user = self.get_object()
 
