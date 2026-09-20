@@ -52,20 +52,56 @@ class IsTeachingStaff(permissions.BasePermission):
             request.user.is_active and
             request.user.has_role(Roles.SUBJECT_TEACHING_STAFF)
         )
+        
+class IsUserManager(permissions.BasePermission):
+    """
+    Gate for user-mutating actions.
+
+    SYSTEM_ADMIN  -> full management.
+    SERVICE_DEPT_ADMIN -> management within own service department
+    (object-level check enforced separately by IsOwnServiceDepartment).
+    SERVICE_DEPT_STAFF -> read-only; rejected here with 403.
+    """
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_active
+            and request.user.has_any_role(
+                [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN]
+            )
+        )
 class IsOwnServiceDepartment(permissions.BasePermission):
-    """ List: allow dept roles. Object: same service_department_id or SYSTEM_ADMINN bypass """
+    """
+    Role gate + object-level service department ownership.
+
+    Role gate (has_permission): allowed for SYSTEM_ADMIN, SERVICE_DEPT_ADMIN
+    and SERVICE_DEPT_STAFF (staff are read-only and are filtered by
+    IsUserManager on mutations).
+
+    Object gate: SYSTEM_ADMIN bypasses; every other role must share the
+    same service department as the target object, OR the target is the
+    requesting user themselves.
+    """
+    
+    ALLOWED_ROLES = (
+        Roles.SYSTEM_ADMIN,
+        Roles.SERVICE_DEPT_ADMIN,
+        Roles.SERVICE_DEPT_STAFF,
+    )
     def has_permission(self, request, view):
         if not request.user or not request.user.is_active or not request.user.is_authenticated:
             return False
-        return request.user.has_any_role([
-            Roles.SYSTEM_ADMIN,
-            Roles.SERVICE_DEPT_ADMIN,
-            Roles.SERVICE_DEPT_STAFF
-        ])
+        return request.user.has_any_role(list(self.ALLOWED_ROLES))
 
     def has_object_permission(self, request, view, obj):
         if request.user.is_system_admin():
             return True
+        
+        if getattr(obj, 'id', None) == request.user.id:
+            return True
+        
         user_dept = _get_dept_id(request.user, 'service_department_id')  
         obj_dept = _get_dept_id(obj, 'service_department_id')
         if not user_dept or not obj_dept:

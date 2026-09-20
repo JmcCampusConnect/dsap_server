@@ -16,9 +16,9 @@ django.setup()
 
 SEEDERS = [
     "role_seeder",
+    "service_department_seeder",
     "user_seeder",
     "academic_department_seeder",
-    "service_department_seeder",
     "service_seeder",
     "service_field_seeder",
     "service_document_seeder",
