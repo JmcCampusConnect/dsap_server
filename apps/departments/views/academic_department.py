@@ -316,7 +316,6 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         MAX_FILE_SIZE = 5 * 1024 * 1024
-        MAX_IMPORT_ROWS = 5000
 
         if file.size > MAX_FILE_SIZE:
             return Response(
@@ -337,20 +336,6 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             wb.close()
             return Response(
                 {"error": "File is empty or contains only headers"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        data_row_count = ws.max_row - 1
-
-        if data_row_count > MAX_IMPORT_ROWS:
-            wb.close()
-            return Response(
-                {
-                    "error": (
-                        f"File contains too many rows. "
-                        f"Maximum allowed is {MAX_IMPORT_ROWS} data rows."
-                    )
-                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -530,18 +515,6 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if not items or not isinstance(items, list):
             return Response({"error": "No items provided for import"}, status=status.HTTP_400_BAD_REQUEST)
 
-        MAX_IMPORT_ITEMS = 5000
-
-        if len(items) > MAX_IMPORT_ITEMS:
-            return Response(
-                {
-                    "error": (
-                        f"Too many records. "
-                        f"Maximum allowed is {MAX_IMPORT_ITEMS} records per import."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
         db_existing = set(
             (c.strip().upper(), s.strip().lower())
             for c, s in AcademicDepartment.objects.values_list('code', 'stream')
