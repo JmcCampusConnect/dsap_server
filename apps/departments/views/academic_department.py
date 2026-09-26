@@ -29,7 +29,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if status_filter in ("active", "inactive"):
             qs = AcademicDepartment.objects.filter(status=status_filter)
         else:
-            qs = AcademicDepartment.objects.filter(status="active")
+            qs = AcademicDepartment.objects.all()
 
         qs = qs.order_by("code")
         search = self.request.query_params.get("search", "").strip()

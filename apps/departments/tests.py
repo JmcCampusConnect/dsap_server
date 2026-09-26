@@ -50,13 +50,15 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
         )
         self.assertEqual(dept.status, 'active')
 
-    def test_get_queryset_excludes_inactive_departments(self):
+    def test_get_queryset_returns_all_departments_by_default(self):
         response = self.client.get('/api/academic-departments/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
         results = response.data.get('results', [])
         codes = [item['code'] for item in results]
+
         self.assertIn('MCA', codes)
-        self.assertNotIn('OLD', codes)
+        self.assertIn('OLD', codes)
 
     def test_get_options_excludes_inactive_departments(self):
         response = self.client.get('/api/academic-departments/options/')
