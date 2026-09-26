@@ -43,20 +43,33 @@ class AcademicDepartment(models.Model):
         ('Aided', 'Aided'),
     )
 
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    )
+
     id = models.BigAutoField(primary_key=True)
     code = models.CharField(max_length=20)
     stream = models.CharField(max_length=10, choices=STREAM_CHOICES, default='SFM')
     degree = models.CharField(max_length=50)
     branch = models.CharField(max_length=100)
-    type = models.CharField(max_length=100)
-    category = models.CharField(max_length=100)
-    status = models.BooleanField(default=True)
+    type = models.CharField(max_length=100, choices=TYPE_CHOICES)
+    category = models.CharField(max_length=100, choices=CATEGORY_CHOICES)
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='active'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'academic_department'
         unique_together = ('code', 'stream')
+        ordering = ['code', 'stream']
+        indexes = [
+            models.Index(fields=['type', 'category'])
+        ]
 
     def __str__(self):
         return f"{self.code} ({self.stream}) - {self.degree}"

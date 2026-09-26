@@ -1,8 +1,8 @@
 import openpyxl
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpResponse
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -23,8 +23,15 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get_queryset(self):
-        qs = AcademicDepartment.objects.filter(status=True).order_by("code")
 
+        status_filter = self.request.query_params.get("status", "").strip().lower()
+
+        if status_filter in ("active", "inactive"):
+            qs = AcademicDepartment.objects.filter(status=status_filter)
+        else:
+            qs = AcademicDepartment.objects.filter(status="active")
+
+        qs = qs.order_by("code")
         search = self.request.query_params.get("search", "").strip()
         if search:
             qs = qs.filter(
@@ -43,8 +50,16 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
         return qs
 
+
     def perform_create(self, serializer):
-        instance = serializer.save()
+        try:
+            with transaction.atomic():
+                instance = serializer.save()
+        except IntegrityError:
+            raise serializers.ValidationError({
+                "code": ["Academic department already exists."]
+            })
+
         changes = self.get_serializer(instance).data
         AuditLog.log(
             request=self.request,
@@ -60,26 +75,62 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         new_data = self.get_serializer(updated_instance).data
 
         changes = {}
+        status_changed = False
+
+        old_status = old_data.get('status', '').lower()
+        new_status = new_data.get('status', '').lower()
+
         for key, new_value in new_data.items():
             old_value = old_data.get(key)
+
             if old_value != new_value:
-                changes[key] = {'old': old_value, 'new': new_value}
+                changes[key] = {
+                    'old': old_value,
+                    'new': new_value,
+                }
+
+                if key == 'status':
+                    status_changed = True
+
+        if status_changed and len(changes) == 1:
+            if old_status == 'active' and new_status == 'inactive':
+                action = 'DEACTIVATE'
+            elif old_status == 'inactive' and new_status == 'active':
+                action = 'ACTIVATE'
+            else:
+                action = 'UPDATE'
+        else:
+            action = 'UPDATE'
 
         if changes:
             AuditLog.log(
                 request=self.request,
-                action='UPDATE',
+                action=action,
                 obj=updated_instance,
-                changes=changes
+                changes=changes,
             )
 
     def destroy(self, request, *args, **kwargs):
         """Soft delete (Deactivate) Academic Department."""
         instance = self.get_object()
+
+        if User.objects.filter(academic_department_id=instance).exists():
+            return Response(
+                {
+                    "detail": (
+                        "Academic Department cannot be deactivated because "
+                        "it is assigned to one or more users."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
         snapshot = self.get_serializer(instance).data
         object_id = instance.pk
-        instance.status = False
+
+        instance.status = 'inactive'
         instance.save(update_fields=['status', 'updated_at'])
+
         AuditLog.log(
             request=request,
             action='DEACTIVATE',
@@ -87,15 +138,50 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             object_id=object_id,
             changes=snapshot
         )
+
         return Response(
             {"message": "Academic Department deactivated successfully."},
             status=status.HTTP_200_OK
         )
 
+    @action(detail=True, methods=["post"], url_path="activate")
+    def activate(self, request, pk=None):
+        instance = AcademicDepartment.objects.filter(
+            pk=pk,
+            status='inactive'
+        ).first()
+
+        if not instance:
+            return Response(
+                {"detail": "Academic Department is not inactive or does not exist."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old_status = instance.status
+        instance.status = 'active'
+        instance.save(update_fields=['status', 'updated_at'])
+
+        AuditLog.log(
+            request=request,
+            action='ACTIVATE',
+            obj=instance,
+            changes={
+                'status': {
+                    'old': old_status,
+                    'new': instance.status,
+                }
+            }
+        )
+
+        return Response(
+            {"message": "Academic Department activated successfully."},
+            status=status.HTTP_200_OK
+        )
+
+
     @action(detail=False, methods=["get"], url_path="options")
     def get_options(self, request):
-        base_qs = AcademicDepartment.objects.filter(status=True)
-
+        base_qs = AcademicDepartment.objects.filter(status='active')
         stream_filter = request.query_params.get("stream", "").strip()
         type_filter = request.query_params.get("type", "").strip()
         category_filter = request.query_params.get("category", "").strip()
@@ -172,9 +258,8 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = "Academic Departments"
 
-        headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category"]
+        headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category", "Status"]   
         ws.append(headers)
-
         for dept in qs:
             ws.append([
                 dept.code,
@@ -183,6 +268,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 dept.branch,
                 dept.type,
                 dept.category,
+                dept.status,
             ])
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -192,17 +278,25 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         return response
 
     def _extract_header_map(self, header_row):
-        """Map required fields to column indices based on header names."""
+        """Map required and optional fields to column indices."""
         REQUIRED_FIELDS = {"code", "stream", "degree", "branch", "type", "category"}
+        OPTIONAL_FIELDS = {"status"}
+
         col_map = {}
+
         if not header_row:
             return col_map, REQUIRED_FIELDS
 
         for idx, cell in enumerate(header_row):
             if cell is None:
                 continue
+
             name = str(cell).strip().lower()
+
             if name in REQUIRED_FIELDS and name not in col_map:
+                col_map[name] = idx
+
+            elif name in OPTIONAL_FIELDS and name not in col_map:
                 col_map[name] = idx
 
         missing = REQUIRED_FIELDS - set(col_map.keys())
@@ -214,15 +308,56 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
+        file_name = file.name.lower()
+
+        if not file_name.endswith('.xlsx'):
+            return Response(
+                {"error": "Unsupported file type. Please upload an .xlsx file."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        MAX_FILE_SIZE = 5 * 1024 * 1024
+        MAX_IMPORT_ROWS = 5000
+
+        if file.size > MAX_FILE_SIZE:
+            return Response(
+                {"error": "File size must be 5 MB or less."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            wb = openpyxl.load_workbook(file, data_only=True)
+            wb = openpyxl.load_workbook(
+                file,
+                read_only=True,
+                data_only=True
+            )
             ws = wb.active
         except Exception:
             return Response({"error": "Invalid Excel file format"}, status=status.HTTP_400_BAD_REQUEST)
 
-        rows = list(ws.iter_rows(values_only=True))
-        if len(rows) < 2:
-            return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
+        if ws.max_row < 2:
+            wb.close()
+            return Response(
+                {"error": "File is empty or contains only headers"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data_row_count = ws.max_row - 1
+
+        if data_row_count > MAX_IMPORT_ROWS:
+            wb.close()
+            return Response(
+                {
+                    "error": (
+                        f"File contains too many rows. "
+                        f"Maximum allowed is {MAX_IMPORT_ROWS} data rows."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            rows = list(ws.iter_rows(values_only=True))
+        finally:
+            wb.close()
 
         col_map, missing = self._extract_header_map(rows[0])
         if missing:
@@ -247,8 +382,9 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "total": 0
         }
 
-        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
-        allowed_streams = {'SFM', 'SFW', 'Aided'}
+        allowed_streams = {
+            choice[0] for choice in AcademicDepartment.STREAM_CHOICES
+        }
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
@@ -257,12 +393,28 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
 
             code = get_val("code").upper()
-            raw_stream = get_val("stream")
-            stream = stream_map.get(raw_stream.upper(), raw_stream)
+            stream = get_val("stream")
             degree = get_val("degree")
             branch = get_val("branch")
             dept_type = get_val("type")
             category = get_val("category")
+
+            department_status = "active"
+            row_errors = []
+
+            if "status" in col_map:
+                raw_status = get_val("status")
+                if raw_status:
+                    status_map = {
+                        "active": "active",
+                        "inactive": "inactive",
+                    }
+                    department_status = status_map.get(raw_status.lower())
+
+                    if department_status is None:
+                        row_errors.append(
+                            f"Invalid Status '{raw_status}'. Allowed values: active, inactive."
+                        )
 
             row_data = {
                 "row_number": row_idx,
@@ -272,21 +424,27 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 "branch": branch,
                 "type": dept_type,
                 "category": category,
+                "department_status": department_status,
                 "status": "NEW",
                 "errors": []
             }
 
-            row_errors = []
+            
             if not code:
                 row_errors.append("Department Code is required.")
             elif len(code) > 20:
                 row_errors.append("Department Code exceeds 20 characters.")
 
-            if not raw_stream:
+            if not stream:
                 row_errors.append("Stream is required.")
-            elif stream not in allowed_streams:
-                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
-
+            elif not any(
+                stream.lower() == allowed_stream.lower()
+                for allowed_stream in allowed_streams
+            ):
+                allowed_values = ", ".join(sorted(allowed_streams))
+                row_errors.append(
+                    f"Invalid Stream '{stream}'. Allowed values: {allowed_values}."
+                )
             if not degree:
                 row_errors.append("Degree is required.")
             elif len(degree) > 50:
@@ -301,11 +459,42 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 row_errors.append("Type is required.")
             elif len(dept_type) > 100:
                 row_errors.append("Type exceeds 100 characters.")
+            else:
+                allowed_types = {
+                    choice[0].lower(): choice[0]
+                    for choice in AcademicDepartment.TYPE_CHOICES
+                }
+
+                matched_type = allowed_types.get(dept_type.lower())
+
+                if matched_type:
+                    dept_type = matched_type
+                else:
+                    row_errors.append(
+                        f"Invalid Type '{dept_type}'. Allowed values: UG, PG."
+                    )
 
             if not category:
                 row_errors.append("Category is required.")
             elif len(category) > 100:
                 row_errors.append("Category exceeds 100 characters.")
+            else:
+                allowed_categories = {
+                    choice[0].lower(): choice[0]
+                    for choice in AcademicDepartment.CATEGORY_CHOICES
+                }
+
+                matched_category = allowed_categories.get(category.lower())
+
+                if matched_category:
+                    category = matched_category
+                else:
+                    row_errors.append(
+                        f"Invalid Category '{category}'. Allowed values: ARTS, SCIENCE."
+                    )
+            row_data["type"] = dept_type
+            row_data["category"] = category 
+
 
             summary["total"] += 1
 
@@ -341,6 +530,18 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         if not items or not isinstance(items, list):
             return Response({"error": "No items provided for import"}, status=status.HTTP_400_BAD_REQUEST)
 
+        MAX_IMPORT_ITEMS = 5000
+
+        if len(items) > MAX_IMPORT_ITEMS:
+            return Response(
+                {
+                    "error": (
+                        f"Too many records. "
+                        f"Maximum allowed is {MAX_IMPORT_ITEMS} records per import."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
         db_existing = set(
             (c.strip().upper(), s.strip().lower())
             for c, s in AcademicDepartment.objects.values_list('code', 'stream')
@@ -350,11 +551,30 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         errors = []
 
         for idx, item in enumerate(items, start=1):
+            department_status = str(
+                item.get('department_status', 'active')
+            ).strip().lower()
+
+            if department_status not in ('active', 'inactive'):
+                errors.append({
+                    "item": idx,
+                    "code": item.get('code'),
+                    "errors": {
+                        "department_status": [
+                            "Invalid status. Allowed values: active, inactive."
+                        ]
+                    }
+                })
+                continue
             serializer = AcademicDepartmentSerializer(data=item)
             if not serializer.is_valid():
-                errors.append({"item": idx, "code": item.get('code'), "errors": serializer.errors})
+                errors.append({
+                    "item": idx,
+                    "code": item.get('code'),
+                    "errors": serializer.errors
+                })
                 continue
-
+           
             code = serializer.validated_data['code']
             stream = serializer.validated_data['stream']
             pair = (code.upper(), stream.lower())
@@ -371,6 +591,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 branch=serializer.validated_data['branch'],
                 type=serializer.validated_data['type'],
                 category=serializer.validated_data['category'],
+                status=department_status,
             ))
 
         if errors and not valid_departments:
@@ -392,117 +613,4 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "imported_count": len(created_objs)
         }, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='import', parser_classes=[MultiPartParser, FormParser])
-    def import_excel(self, request):
-        file = request.FILES.get('file')
-        if not file:
-            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            wb = openpyxl.load_workbook(file, data_only=True)
-            ws = wb.active
-        except Exception:
-            return Response({"error": "Invalid Excel file format"}, status=status.HTTP_400_BAD_REQUEST)
-
-        rows = list(ws.iter_rows(values_only=True))
-        if len(rows) < 2:
-            return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
-
-        col_map, missing = self._extract_header_map(rows[0])
-        if missing:
-            missing_readable = ", ".join(sorted([m.capitalize() for m in missing]))
-            return Response({
-                "error": f"Missing required header(s): {missing_readable}. Required headers are: Code, Stream, Degree, Branch, Type, Category."
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        errors = []
-        valid_departments = []
-        db_existing_pairs = set((c.upper(), s.lower()) for c, s in AcademicDepartment.objects.values_list('code', 'stream'))
-        seen_pairs_in_file = set()
-        stream_map = {'SF-MEN': 'SFM', 'SF-WOMEN': 'SFW', 'SFM': 'SFM', 'SFW': 'SFW', 'AIDED': 'Aided'}
-        allowed_streams = {'SFM', 'SFW', 'Aided'}
-
-        for row_idx, row in enumerate(rows[1:], start=2):
-            if not any(row):
-                continue
-
-            get_val = lambda field: str(row[col_map[field]]).strip() if col_map[field] < len(row) and row[col_map[field]] is not None else ""
-
-            code = get_val("code").upper()
-            raw_stream = get_val("stream")
-            stream = stream_map.get(raw_stream.upper(), raw_stream)
-            degree = get_val("degree")
-            branch = get_val("branch")
-            dept_type = get_val("type")
-            category = get_val("category")
-
-            row_errors = []
-            if not raw_stream:
-                row_errors.append("Stream is required.")
-            elif stream not in allowed_streams:
-                row_errors.append(f"Invalid Stream '{raw_stream}'. Allowed values: SFM, SFW, Aided.")
-
-            pair = (code, stream.lower())
-            if not code:
-                row_errors.append("Department Code is required.")
-            elif len(code) > 20:
-                row_errors.append("Department Code cannot exceed 20 characters.")
-            elif pair in db_existing_pairs:
-                row_errors.append(f"Department Code '{code}' with Stream '{stream}' already exists.")
-            elif pair in seen_pairs_in_file:
-                row_errors.append(f"Duplicate Department Code '{code}' with Stream '{stream}' found within the uploaded Excel file.")
-            else:
-                seen_pairs_in_file.add(pair)
-
-            if not degree:
-                row_errors.append("Degree is required.")
-            elif len(degree) > 50:
-                row_errors.append("Degree exceeds the maximum allowed length.")
-
-            if not branch:
-                row_errors.append("Branch is required.")
-            elif len(branch) > 100:
-                row_errors.append("Branch exceeds the maximum allowed length.")
-
-            if not dept_type:
-                row_errors.append("Type is required.")
-            elif len(dept_type) > 100:
-                row_errors.append("Type exceeds the maximum allowed length.")
-
-            if not category:
-                row_errors.append("Category is required.")
-            elif len(category) > 100:
-                row_errors.append("Category exceeds the maximum allowed length.")
-
-            if row_errors:
-                errors.append({"row": row_idx, "errors": row_errors})
-            else:
-                valid_departments.append(AcademicDepartment(
-                    code=code,
-                    stream=stream,
-                    degree=degree,
-                    branch=branch,
-                    type=dept_type,
-                    category=category,
-                ))
-
-        if errors:
-            return Response({
-                "error": "Validation failed for some rows",
-                "details": errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            created_objs = AcademicDepartment.objects.bulk_create(valid_departments)
-            AuditLog.log(
-                request=request,
-                action='IMPORT',
-                obj=AcademicDepartment,
-                object_id='BULK_IMPORT',
-                object_repr='Imported Academic Departments',
-                changes={"imported_count": len(created_objs)}
-            )
-
-        return Response({
-            "message": f"Successfully imported {len(created_objs)} departments"
-        }, status=status.HTTP_201_CREATED)
+    

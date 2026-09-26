@@ -3,10 +3,15 @@ from apps.departments.models import AcademicDepartment
 
 
 class AcademicDepartmentSerializer(serializers.ModelSerializer):
-    
+
+    stream = serializers.CharField(max_length=10)
     type = serializers.CharField(max_length=100)
     category = serializers.CharField(max_length=100)
-
+    status = serializers.ChoiceField(
+        choices=AcademicDepartment.STATUS_CHOICES,
+        read_only=True
+    )
+    
     class Meta:
         model = AcademicDepartment
         fields = [
@@ -20,23 +25,72 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
     def validate_stream(self, value):
         if not value or not str(value).strip():
             raise serializers.ValidationError("Stream is required.")
+
         val = str(value).strip()
-        allowed_streams = [choice[0] for choice in AcademicDepartment.STREAM_CHOICES]
-        # Match case-insensitively if possible
-        matched = next((s for s in allowed_streams if s.lower() == val.lower()), None)
+
+        allowed_streams = [
+            choice[0] for choice in AcademicDepartment.STREAM_CHOICES
+        ]
+
+        matched = next(
+            (
+                stream_value
+                for stream_value in allowed_streams
+                if stream_value.lower() == val.lower()
+            ),
+            None
+        )
+
         if matched:
             return matched
-        return val
+
+        raise serializers.ValidationError(
+            f"Invalid Stream '{val}'. Allowed values: {', '.join(allowed_streams)}."
+        )
 
     def validate_type(self, value):
         if not value or not str(value).strip():
-            raise serializers.ValidationError("Type cannot be empty.")
-        return str(value).strip()
+            raise serializers.ValidationError("Type is required.")
+
+        val = str(value).strip()
+
+        allowed_types = [choice[0] for choice in AcademicDepartment.TYPE_CHOICES]
+
+        matched = next(
+            (type_value for type_value in allowed_types
+            if type_value.lower() == val.lower()),
+            None
+        )
+
+        if matched:
+            return matched
+
+        raise serializers.ValidationError(
+            f"Invalid Type '{val}'. Allowed values: {', '.join(allowed_types)}."
+        )
 
     def validate_category(self, value):
         if not value or not str(value).strip():
-            raise serializers.ValidationError("Category cannot be empty.")
-        return str(value).strip()
+            raise serializers.ValidationError("Category is required.")
+
+        val = str(value).strip()
+
+        allowed_categories = [
+            choice[0] for choice in AcademicDepartment.CATEGORY_CHOICES
+        ]
+
+        matched = next(
+            (category_value for category_value in allowed_categories
+            if category_value.lower() == val.lower()),
+            None
+        )
+
+        if matched:
+            return matched
+
+        raise serializers.ValidationError(
+            f"Invalid Category '{val}'. Allowed values: {', '.join(allowed_categories)}."
+        )
 
     def validate_degree(self, value):
         if not value or not str(value).strip():
@@ -63,7 +117,6 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError({
-                    "code": f"Department with Code '{code}' and Stream '{stream}' already exists."
+                    "code": ["Academic department already exists."]
                 })
-
-        return data
+        return data

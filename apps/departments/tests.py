@@ -27,7 +27,7 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
             branch='Computer Applications',
             type='PG',
             category='SCIENCE',
-            status=True,
+            status='active',
         )
         self.dept_inactive = AcademicDepartment.objects.create(
             code='OLD',
@@ -36,10 +36,10 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
             branch='Old Branch',
             type='UG',
             category='ARTS',
-            status=False,
+            status='inactive',
         )
 
-    def test_default_status_is_true(self):
+    def test_default_status_is_active(self):
         dept = AcademicDepartment.objects.create(
             code='BCA',
             stream='SFM',
@@ -48,7 +48,7 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
             type='UG',
             category='SCIENCE',
         )
-        self.assertTrue(dept.status)
+        self.assertEqual(dept.status, 'active')
 
     def test_get_queryset_excludes_inactive_departments(self):
         response = self.client.get('/api/academic-departments/')
@@ -73,7 +73,7 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
 
         # Verify department still exists in database
         self.dept_active.refresh_from_db()
-        self.assertFalse(self.dept_active.status)
+        self.assertEqual(self.dept_active.status, 'inactive')
         self.assertTrue(AcademicDepartment.objects.filter(id=self.dept_active.id).exists())
 
         # Verify audit log was created
