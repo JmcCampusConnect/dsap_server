@@ -19,9 +19,6 @@ from ..role_constants import get_accessible_menus, get_capabilities
 from ..models import User
 
 
-# ----------------------------------------------------------------------
-# Conditional cookie configuration based on environment
-# ----------------------------------------------------------------------
 if settings.DEBUG:
     REFRESH_COOKIE_NAME = "refresh"
     REFRESH_COOKIE_PATH = "/"
@@ -32,11 +29,7 @@ else:
     COOKIE_SECURE = True
 
 
-# ----------------------------------------------------------------------
-# Helper: set refresh cookie
-# ----------------------------------------------------------------------
 def _set_refresh_cookie(response, refresh_token: str, max_age: int = None) -> None:
-    """Set the HTTP‑only refresh cookie with __Host- prefix."""
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         refresh_token,
@@ -48,40 +41,26 @@ def _set_refresh_cookie(response, refresh_token: str, max_age: int = None) -> No
     )
 
 
-# ----------------------------------------------------------------------
-# Helper: role‑based absolute maximum lifetime
-# ----------------------------------------------------------------------
 def get_max_absolute_lifetime(user, remember_me: bool) -> int | None:
-    """
-    Returns the maximum allowed absolute session lifetime in seconds,
-    or None if no limit should be enforced.
-    Matches the specification (§5.6) and role_seeder.py roles.
-    """
+    
     role = user.role_name
 
-    # Admins (both system and service department)
     if role in ('SYSTEM_ADMIN', 'SERVICE_DEPT_ADMIN'):
-        return 24 * 3600  # 24 hours
+        return 24 * 3600
 
-    # Faculty / Staff / Teaching Staff / Service Dept Staff
     if role in ('SUBJECT_TEACHING_STAFF', 'SERVICE_DEPT_STAFF'):
-        return 7 * 24 * 3600  # 7 days
+        return 7 * 24 * 3600
 
-    # Students
     if role == 'STUDENT':
         if remember_me:
-            return 7 * 24 * 3600  # 7 days when "Remember Me" is checked
+            return 7 * 24 * 3600
         else:
-            # Spec says "session only" but we add a safety cap (30 days)
-            # to prevent indefinite sessions if browser never closes.
-            return 30 * 24 * 3600  # 30 days (optional but recommended)
+            return 30 * 24 * 3600
     return None
 
 
-# ----------------------------------------------------------------------
-# VIEW: Login
-# ----------------------------------------------------------------------
 class LoginView(TokenObtainPairView):
+
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -90,30 +69,25 @@ class LoginView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         user = None
         try:
-            # 1) Validate credentials via the custom serializer
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             user = serializer.user
-            
+
             refresh_token_str = serializer.validated_data.get('refresh')
             remember = request.data.get('remember', False)
 
-            # 2) Create access token with required claims
             access_token = AccessToken.for_user(user)
             session_started_at = int(time.time())
             access_token['session_started_at'] = session_started_at
             access_token['role'] = user.role_name or ""
 
-            # 3) Prepare response with the access token
             response = Response({
                 'access': str(access_token),
             }, status=status.HTTP_200_OK)
 
-            # 4) Set refresh cookie (session or persistent)
             max_age = settings.REFRESH_COOKIE_PERSISTENT_AGE if remember else None
             _set_refresh_cookie(response, refresh_token_str, max_age=max_age)
 
-            # 5) Audit: login success
             AuditLog.log(
                 request=request,
                 action='LOGIN',
@@ -125,50 +99,59 @@ class LoginView(TokenObtainPairView):
             return response
 
         except AuthenticationFailed as e:
-            # Audit: login failure
             raise
 
         except Exception as e:
-            # Catch‑all for unexpected errors
             raise
 
 
-# ----------------------------------------------------------------------
-# VIEW: Validate Token (source of truth for frontend)
-# ----------------------------------------------------------------------
 class ValidateTokenView(APIView):
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
 
-        # Reject inactive users
         if not user.is_active:
             return Response(
                 {"detail": "User account is inactive"},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Extract claims from the access token
         access_payload = request.auth.payload
         session_started_at = access_payload.get('session_started_at')
 
-        # Build department string based on the user's role
+        student = getattr(user, 'student', None)
+
         role_name = user.role_name or ""
         department = ""
         if role_name == "STUDENT":
-            if user.academic_department_id:
-                department = user.academic_department_id.name
+            academic_department = student.academic_department_id if student else user.academic_department_id
+            if academic_department:
+                department = ' - '.join(
+                    part for part in (
+                        academic_department.code,
+                        academic_department.degree,
+                        academic_department.branch,
+                    ) if part
+                )
         elif role_name in ("SYSTEM_ADMIN", "SERVICE_DEPT_ADMIN", "SERVICE_DEPT_STAFF"):
             if user.service_department_id:
                 department = user.service_department_id.name
-        # For other roles, department remains empty
 
         menus = get_accessible_menus(role_name)
         capabilities = get_capabilities(role_name)
 
         data = {
             'username': user.username,
+            'email': user.email,
+            'student_name': student.name if student else None,
+            'register_number': student.register_number if student else None,
+            'mobile_number': student.mobile_number if student else None,
+            'year_of_admission': student.year_of_admission if student else None,
+            'dob': student.dob if student else None,
+            'section': student.section if student else None,
+            'stream': student.stream if student else None,
             'role': role_name,
             'role_id': user.role_id.id if user.role_id else None,
             'service_department_id': getattr(user.service_department_id, 'id', None) if user.service_department_id else None,
@@ -184,10 +167,8 @@ class ValidateTokenView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# ----------------------------------------------------------------------
-# VIEW: Refresh Token (with rotation, absolute cap)
-# ----------------------------------------------------------------------
 class CookieTokenRefreshView(APIView):
+
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
@@ -201,12 +182,10 @@ class CookieTokenRefreshView(APIView):
         try:
             old_token = RefreshToken(refresh_token)
         except TokenError as e:
-            # Invalid token – delete cookie and audit
             response = Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
             return response
 
-        # Retrieve user and ensure active
         try:
             user = User.objects.get(id=old_token['user_id'])
         except User.DoesNotExist:
@@ -219,7 +198,6 @@ class CookieTokenRefreshView(APIView):
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
             return response
 
-        # ----- Enforce absolute session age (role‑based) -----
         session_started_at = old_token.payload.get('session_started_at')
         remember_me = old_token.payload.get('remember_me', False)
 
@@ -228,11 +206,10 @@ class CookieTokenRefreshView(APIView):
             if max_lifetime is not None:
                 elapsed = timezone.now().timestamp() - session_started_at
                 if elapsed > max_lifetime:
-                    # Blacklist the old token to clean up
                     try:
                         old_token.blacklist()
                     except TokenError:
-                        pass  # already blacklisted
+                        pass
 
                     response = Response(
                         {"detail": "Session exceeded maximum allowed lifetime. Please log in again."},
@@ -241,12 +218,10 @@ class CookieTokenRefreshView(APIView):
                     response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
                     return response
 
-        # ----- Create new refresh token (custom) preserving claims -----
         try:
             new_refresh = CustomRefreshToken.for_user(user, session_started_at=session_started_at)
             new_refresh.payload['remember_me'] = remember_me
         except Exception:
-            # If token reuse is detected, CustomRefreshToken may raise
             response = Response(
                 {"detail": "Refresh token reuse detected.", "code": "token_reuse_detected"},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -254,11 +229,9 @@ class CookieTokenRefreshView(APIView):
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
             return response
 
-        # Blacklist the old token (rotation)
         try:
             old_token.blacklist()
         except TokenError:
-            # Already blacklisted – treat as reuse
             response = Response(
                 {"detail": "Refresh token reuse detected.", "code": "token_reuse_detected"},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -266,23 +239,19 @@ class CookieTokenRefreshView(APIView):
             response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
             return response
 
-        # ----- Create new access token with claims -----
         new_access = AccessToken.for_user(user)
         new_access['session_started_at'] = session_started_at
         new_access['role'] = user.role_name or ""
 
-        # ----- Build response with new cookie -----
         response = Response({"accessToken": str(new_access)}, status=status.HTTP_200_OK)
         max_age = settings.REFRESH_COOKIE_PERSISTENT_AGE if remember_me else None
         _set_refresh_cookie(response, str(new_refresh), max_age=max_age)
         return response
 
 
-# ----------------------------------------------------------------------
-# VIEW: Logout (always returns 200 to avoid oracle)
-# ----------------------------------------------------------------------
 class LogoutView(APIView):
-    permission_classes = []   # AllowAny (no auth required)
+
+    permission_classes = []
 
     def post(self, request):
         refresh_token = request.COOKIES.get(REFRESH_COOKIE_NAME)
@@ -296,9 +265,8 @@ class LogoutView(APIView):
                     user = User.objects.filter(id=user_id).first()
                 token.blacklist()
             except Exception:
-                pass  # ignore errors – just delete the cookie
+                pass
 
-        # Audit: always log the attempt
         AuditLog.log(
             request=request,
             action='LOGOUT',
@@ -310,23 +278,20 @@ class LogoutView(APIView):
         response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
         return response
 
-# ----------------------------------------------------------------------
-# VIEW: Logout All Devices
-# ----------------------------------------------------------------------
+
 class LogoutAllView(APIView):
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user = request.user
 
-        # Only blacklist tokens that are not already blacklisted
         tokens = OutstandingToken.objects.filter(user=user, blacklistedtoken__isnull=True)
         count = tokens.count()
 
         for token in tokens:
             BlacklistedToken.objects.get_or_create(token=token)
-            
-        # Audit: Logout for all sessions
+
         AuditLog.log(
             request=request,
             action='LOGOUT',
