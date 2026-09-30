@@ -1,8 +1,7 @@
-# apps/accounts/role_constants.py
 from typing import List
 
 class Roles:
-    """Single source of truth for role names. Use everywhere, never hardcode strings."""
+
     SYSTEM_ADMIN = "SYSTEM_ADMIN"
     SERVICE_DEPT_ADMIN = "SERVICE_DEPT_ADMIN"
     SERVICE_DEPT_STAFF = "SERVICE_DEPT_STAFF"
@@ -26,7 +25,9 @@ class Roles:
 ROLE_CHOICES = [(r, r) for r in Roles.all()]
 
 # Menu Key -> Allowed Roles (Backend + Frontend SSOT)
+
 MENU_ACCESS_CONFIG = {
+    
     # Common - all authenticated
     "dashboard": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
     "student_home": [Roles.STUDENT],
@@ -36,13 +37,8 @@ MENU_ACCESS_CONFIG = {
     # Student-only
     "service_directory": [Roles.STUDENT],
     "my_requests": [Roles.STUDENT],
+    "service_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "payment_history": [Roles.STUDENT, Roles.SYSTEM_ADMIN],
-    
-    # Requests (staff/admin)
-    "pending_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "approved_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "rejected_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "completed_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     
     # Management
     "student_management": [Roles.SYSTEM_ADMIN],
