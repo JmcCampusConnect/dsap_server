@@ -47,7 +47,7 @@ MENU_ACCESS_CONFIG = {
     # Management
     "student_management": [Roles.SYSTEM_ADMIN],
     "user_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "service_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "service_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "service_dept_management": [Roles.SYSTEM_ADMIN],
     "academic_dept_management": [Roles.SYSTEM_ADMIN],
     

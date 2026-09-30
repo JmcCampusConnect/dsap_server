@@ -66,6 +66,14 @@ class ServiceSerializer(serializers.ModelSerializer):
         source="service_department_id", 
         read_only=True,
     )
+    department_name = serializers.CharField(
+        source="service_department_id.name", 
+        read_only=True,
+    )
+    department_code = serializers.CharField(
+        source="service_department_id.code", 
+        read_only=True,
+    )
     custom_fields = serializers.SerializerMethodField(read_only=True)
     workflow_steps = serializers.SerializerMethodField(read_only=True)
 
@@ -77,6 +85,8 @@ class ServiceSerializer(serializers.ModelSerializer):
             "name",
             "service_department",
             "service_department_id",
+            "department_name",
+            "department_code",
             "base_fee",
             "sla_days",
             "status",
@@ -87,8 +97,42 @@ class ServiceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "code", "status", "created_at", "updated_at"]
         extra_kwargs = {
-            "service_department_id": {"write_only": True},
+            "service_department_id": {"write_only": True, "required": False},
         }
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+
+        if self.instance:
+            # Update: non-system-admin cannot change service_department_id
+            if user and not user.is_system_admin():
+                new_dept = attrs.get("service_department_id")
+                if new_dept and new_dept != self.instance.service_department_id:
+                    raise serializers.ValidationError({
+                        "service_department_id": "You cannot change the service department of an existing service."
+                    })
+        else:
+            # Create:
+            if user and not user.is_system_admin():
+                user_dept = getattr(user, "service_department_id", None)
+                if not user_dept:
+                    raise serializers.ValidationError({
+                        "service_department_id": "User is not assigned to any service department."
+                    })
+                new_dept = attrs.get("service_department_id")
+                if new_dept and new_dept != user_dept:
+                    raise serializers.ValidationError({
+                        "service_department_id": "You can only create services in your own department."
+                    })
+                attrs["service_department_id"] = user_dept
+            elif user and user.is_system_admin():
+                if "service_department_id" not in attrs:
+                    raise serializers.ValidationError({
+                        "service_department_id": "This field is required."
+                    })
+
+        return super().validate(attrs)
 
     def get_custom_fields(self, obj):
         fields = ServiceField.objects.filter(service_id=obj).order_by("display_order", "id")

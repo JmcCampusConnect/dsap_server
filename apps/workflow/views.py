@@ -1,7 +1,8 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, NotFound
 from django.shortcuts import get_object_or_404
 from django.db import transaction, models
 
@@ -15,6 +16,12 @@ from apps.workflow.constants import (
     ALLOWED_ACTION_CHOICES,
 )
 from apps.accounts.models import Role
+from apps.accounts.role_constants import Roles
+from apps.accounts.permissions import (
+    IsSystemAdmin,
+    IsServiceDeptAdmin,
+    IsServiceDeptStaff,
+)
 from apps.services.models import Service
 
 
@@ -27,21 +34,45 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_permissions(self):
-        return [AllowAny()]
+        if self.action in {"create", "update", "partial_update", "destroy", "reorder"}:
+            return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
+        # list / retrieve / options
+        return [
+            IsAuthenticated(),
+            (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
+        ]
+
+    def _get_and_authorize_service(self, service_id, require_write=False):
+        service = get_object_or_404(Service, id=service_id)
+        user = self.request.user
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id or service.service_department_id_id != user_dept_id:
+                raise NotFound("Service not found.")
+        if require_write and not (user.is_system_admin() or user.has_role(Roles.SERVICE_DEPT_ADMIN)):
+            raise PermissionDenied("You do not have permission to modify workflow steps for this service.")
+        return service
 
     def get_queryset(self):
         service_id = self.kwargs.get("service_id")
         if not service_id:
             return WorkflowStep.objects.none()
-        return (
+        self._get_and_authorize_service(service_id, require_write=False)
+        user = self.request.user
+        qs = (
             WorkflowStep.objects.filter(service_id=service_id)
-            .select_related("responsible_role_id")
-            .order_by("step_order", "id")
+            .select_related("responsible_role_id", "service_id")
         )
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id:
+                return WorkflowStep.objects.none()
+            qs = qs.filter(service_id__service_department_id=user_dept_id)
+        return qs.order_by("step_order", "id")
 
     def perform_create(self, serializer):
         service_id = self.kwargs.get("service_id")
-        service = get_object_or_404(Service, id=service_id)
+        service = self._get_and_authorize_service(service_id, require_write=True)
         
         step_order = serializer.validated_data.get("step_order")
         if not step_order or step_order <= 0:
@@ -60,11 +91,11 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         service_id = self.kwargs.get("service_id")
+        self._get_and_authorize_service(service_id, require_write=True)
         instance = self.get_object()
         if str(instance.service_id_id) != str(service_id):
-            return Response(
-                {"detail": "Workflow step does not belong to this service."},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise serializers.ValidationError(
+                {"detail": "Workflow step does not belong to this service."}
             )
         old_data = self.get_serializer(instance).data
         updated_instance = serializer.save()
@@ -84,8 +115,9 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
         )
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
         service_id = self.kwargs.get("service_id")
+        self._get_and_authorize_service(service_id, require_write=True)
+        instance = self.get_object()
         if str(instance.service_id_id) != str(service_id):
             return Response(
                 {"detail": "Workflow step does not belong to this service."},
@@ -124,14 +156,13 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
         """
         Expects a list of objects with { id: <int>, step_order: <int> }
         """
+        service = self._get_and_authorize_service(service_id, require_write=True)
         steps_data = request.data
         if not isinstance(steps_data, list):
             return Response(
                 {"detail": "Expected a list of step orders with 'id' and 'step_order'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        service = get_object_or_404(Service, id=service_id)
 
         with transaction.atomic():
             # Avoid collision during reorder
@@ -175,6 +206,8 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
         """
         Returns metadata options for configuring workflow steps.
         """
+        if service_id:
+            self._get_and_authorize_service(service_id, require_write=False)
         roles = Role.objects.all().order_by("name")
         role_options = [
             {

@@ -8,14 +8,15 @@ import time
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+
     remember = serializers.BooleanField(default=False, write_only=True)
     
     def validate(self, attrs):
+        
         username = attrs.get('username')
         password = attrs.get('password')
         remember = attrs.get('remember', False)
         
-        # ----- Single querry with select_related (efficient) -----
         try:
             user = User.objects.select_related('role_id', 'service_department_id', 'academic_department_id').get(username=username)
         except User.DoesNotExist:
@@ -46,6 +47,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class ValidateTokenSerializer(serializers.Serializer):
     username = serializers.CharField()
+    email = serializers.EmailField(allow_null=True, allow_blank=True)
+    student_name = serializers.CharField(allow_null=True, allow_blank=True)
+    register_number = serializers.CharField(allow_null=True, allow_blank=True)
+    mobile_number = serializers.CharField(allow_null=True, allow_blank=True)
+    year_of_admission = serializers.CharField(allow_null=True, allow_blank=True)
+    dob = serializers.DateField(allow_null=True)
+    section = serializers.CharField(allow_null=True, allow_blank=True)
+    stream = serializers.CharField(allow_null=True, allow_blank=True)
     role = serializers.CharField()
     role_id = serializers.IntegerField(allow_null=True)
     service_department_id = serializers.IntegerField(allow_null=True)
@@ -57,5 +66,3 @@ class ValidateTokenSerializer(serializers.Serializer):
 
 class ResetPasswordSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, required=True)
-
-    

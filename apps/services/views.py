@@ -3,7 +3,7 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, NotFound
 from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
 
@@ -16,6 +16,7 @@ from apps.accounts.permissions import (
     IsSystemAdmin,
     IsServiceDeptAdmin,
     IsServiceDeptStaff,
+    IsOwnServiceDepartment,
 )
 from apps.workflow.constants import ACTION_TYPE_CHOICES, ALLOWED_ACTION_CHOICES
 from apps.services.serializers import (
@@ -58,13 +59,17 @@ class ServiceViewSet(viewsets.ModelViewSet):
         if self.action in self.PUBLIC_ACTIONS:
             return [AllowAny()]
         if self.action in {"create", "update", "partial_update", "destroy"}:
-            return [IsAuthenticated(), (IsSystemAdmin | IsServiceDeptAdmin)()]
+            return [
+                IsAuthenticated(),
+                (IsSystemAdmin | IsServiceDeptAdmin)(),
+                IsOwnServiceDepartment(),
+            ]
         # list / retrieve / options_list
         return [
             IsAuthenticated(),
             (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
+            IsOwnServiceDepartment(),
         ]
-
 
     # ── QuerySet ─────────────────────────────────────────────────
     def get_queryset(self):
@@ -76,14 +81,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_authenticated and not user.is_system_admin():
             dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
-            qs = qs.filter(service_department_id=dept_id) if dept_id else qs.none()
+            if not dept_id:
+                return qs.none()
+            qs = qs.filter(service_department_id=dept_id)
 
         search = self.request.query_params.get("search", "").strip()
         if search:
             qs = qs.filter(
                 Q(code__icontains=search)
                 | Q(name__icontains=search)
-                | Q(service_department__name__icontains=search)
+                | Q(service_department_id__name__icontains=search)
             )
 
         status_filter = self.request.query_params.get("status", "").strip()
@@ -93,8 +100,15 @@ class ServiceViewSet(viewsets.ModelViewSet):
             elif status_filter.lower() in ("false", "0", "inactive"):
                 qs = qs.filter(status=False)
 
-        dept_filter = self.request.query_params.get("department", "").strip()
+        dept_filter = (
+            self.request.query_params.get("service_department_id") or 
+            self.request.query_params.get("department") or ""
+        ).strip()
         if dept_filter:
+            if user.is_authenticated and not user.is_system_admin():
+                dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+                if str(dept_filter) != str(dept_id):
+                    return qs.none()
             qs = qs.filter(service_department_id=dept_filter)
 
         code_filter = self.request.query_params.get("code", "").strip()
@@ -109,14 +123,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     # ── Create (auto-generate code) ──────────────────────────────
     def perform_create(self, serializer):
-        dept = serializer.validated_data["service_department_id"]
         user = self.request.user
 
-        # Dept Admin can only create services in their own department
-        if user.has_role(Roles.SERVICE_DEPT_ADMIN):
-            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
-            if user_dept_id is None or dept.id != user_dept_id:
-                raise PermissionDenied("You can only create services in your own department.")
+        # Dept Admin is scoped strictly to their own department
+        if not user.is_system_admin():
+            user_dept = user.service_department_id
+            if not user_dept:
+                raise PermissionDenied("You are not assigned to any service department.")
+            dept = user_dept
+        else:
+            dept = serializer.validated_data["service_department_id"]
 
         prefix = dept.code
         existing_codes = (
@@ -133,7 +149,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 pass
 
         code = f"{prefix}-{str(max_seq + 1).zfill(3)}"
-        instance = serializer.save(code=code, status=True)
+        instance = serializer.save(service_department_id=dept, code=code, status=True)
         AuditLog.log(
             request=self.request,
             action="CREATE",
@@ -193,7 +209,18 @@ class ServiceViewSet(viewsets.ModelViewSet):
     # ── Dropdown options ─────────────────────────────────────────
     @action(detail=False, methods=["get"], url_path="options")
     def options_list(self, request):
-        departments = ServiceDepartment.objects.filter(status__iexact="active").order_by("name")
+        user = request.user
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            departments = ServiceDepartment.objects.filter(id=user_dept_id, status__iexact="active") if user_dept_id else ServiceDepartment.objects.none()
+            dept_services = Service.objects.filter(service_department_id=user_dept_id) if user_dept_id else Service.objects.none()
+            codes = dept_services.values_list('code', flat=True).distinct().order_by('code')
+            names = dept_services.values_list('name', flat=True).distinct().order_by('name')
+        else:
+            departments = ServiceDepartment.objects.filter(status__iexact="active").order_by("name")
+            codes = Service.objects.values_list('code', flat=True).distinct().order_by('code')
+            names = Service.objects.values_list('name', flat=True).distinct().order_by('name')
+
         dept_options = [
             {"value": str(dept.id), "label": dept.name} for dept in departments
         ]
@@ -201,9 +228,6 @@ class ServiceViewSet(viewsets.ModelViewSet):
             {"value": "true", "label": "Active"},
             {"value": "false", "label": "Inactive"},
         ]
-        
-        codes = Service.objects.values_list('code', flat=True).distinct().order_by('code')
-        names = Service.objects.values_list('name', flat=True).distinct().order_by('name')
         
         code_options = [{"value": c, "label": c} for c in codes if c]
         name_options = [{"value": n, "label": n} for n in names if n]
@@ -348,17 +372,36 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
             (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
         ]
 
+    def _get_and_authorize_service(self, service_id, require_write=False):
+        service = get_object_or_404(Service, id=service_id)
+        user = self.request.user
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id or service.service_department_id_id != user_dept_id:
+                raise NotFound("Service not found.")
+        if require_write and not (user.is_system_admin() or user.has_role(Roles.SERVICE_DEPT_ADMIN)):
+            raise PermissionDenied("You do not have permission to modify fields for this service.")
+        return service
+
     def get_queryset(self):
         """Get fields for a specific service"""
         service_id = self.kwargs.get("service_id")
         if not service_id:
             return ServiceField.objects.none()
-        return ServiceField.objects.filter(service_id=service_id).order_by("display_order", "id")
+        self._get_and_authorize_service(service_id, require_write=False)
+        user = self.request.user
+        qs = ServiceField.objects.filter(service_id=service_id).select_related("service_id")
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id:
+                return ServiceField.objects.none()
+            qs = qs.filter(service_id__service_department_id=user_dept_id)
+        return qs.order_by("display_order", "id")
 
     def perform_create(self, serializer):
         """Create a new field with auto-incrementing display_order"""
         service_id = self.kwargs.get("service_id")
-        service = get_object_or_404(Service, id=service_id)
+        service = self._get_and_authorize_service(service_id, require_write=True)
         
         # Calculate next display order if not provided
         display_order = serializer.validated_data.get("display_order", 0)
@@ -375,6 +418,8 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        service_id = self.kwargs.get("service_id")
+        self._get_and_authorize_service(service_id, require_write=True)
         instance = self.get_object()
         old_data = self.get_serializer(instance).data
         updated_instance = serializer.save()
@@ -391,11 +436,36 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
             changes=changes,
         )
 
+    def destroy(self, request, *args, **kwargs):
+        service_id = self.kwargs.get("service_id")
+        self._get_and_authorize_service(service_id, require_write=True)
+        instance = self.get_object()
+        if str(instance.service_id_id) != str(service_id):
+            return Response(
+                {"detail": "Field does not belong to this service"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        object_id = instance.id
+        snapshot = self.get_serializer(instance).data
+        instance.delete()
+        AuditLog.log(
+            request=request,
+            action="DELETE",
+            obj=instance,
+            object_id=object_id,
+            changes=snapshot,
+        )
+        return Response(
+            {"detail": "Field deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
     @action(detail=False, methods=["patch"], url_path="reorder")
     def reorder(self, request, service_id=None):
         """
         Expects a list of objects with { id: <int>, display_order: <int> }
         """
+        self._get_and_authorize_service(service_id, require_write=True)
         fields_data = request.data
         if not isinstance(fields_data, list):
             return Response(
@@ -462,17 +532,36 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
             (IsSystemAdmin | IsServiceDeptAdmin | IsServiceDeptStaff)(),
         ]
 
+    def _get_and_authorize_service(self, service_id, require_write=False):
+        service = get_object_or_404(Service, id=service_id)
+        user = self.request.user
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id or service.service_department_id_id != user_dept_id:
+                raise NotFound("Service not found.")
+        if require_write and not (user.is_system_admin() or user.has_role(Roles.SERVICE_DEPT_ADMIN)):
+            raise PermissionDenied("You do not have permission to modify documents for this service.")
+        return service
+
     def get_queryset(self):
         """Get documents for a specific service"""
         service_id = self.kwargs.get("service_id")
         if not service_id:
             return ServiceDocument.objects.none()
-        return ServiceDocument.objects.filter(service_id=service_id).order_by("created_at")
+        self._get_and_authorize_service(service_id, require_write=False)
+        user = self.request.user
+        qs = ServiceDocument.objects.filter(service_id=service_id).select_related("service_id")
+        if user.is_authenticated and not user.is_system_admin():
+            user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
+            if not user_dept_id:
+                return ServiceDocument.objects.none()
+            qs = qs.filter(service_id__service_department_id=user_dept_id)
+        return qs.order_by("created_at")
 
     def perform_create(self, serializer):
         """Create a new document for a service"""
         service_id = self.kwargs.get("service_id")
-        service = get_object_or_404(Service, id=service_id)
+        service = self._get_and_authorize_service(service_id, require_write=True)
         instance = serializer.save(service_id=service)
         AuditLog.log(
             request=self.request,
@@ -484,7 +573,7 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """Update a document"""
         service_id = self.kwargs.get("service_id")
-        # Ensure the document belongs to the correct service
+        self._get_and_authorize_service(service_id, require_write=True)
         instance = self.get_object()
         if str(instance.service_id_id) != str(service_id):
             raise serializers.ValidationError(
@@ -507,8 +596,9 @@ class ServiceDocumentViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """Delete a document"""
-        instance = self.get_object()
         service_id = self.kwargs.get("service_id")
+        self._get_and_authorize_service(service_id, require_write=True)
+        instance = self.get_object()
         
         # Ensure the document belongs to the correct service
         if str(instance.service_id_id) != str(service_id):

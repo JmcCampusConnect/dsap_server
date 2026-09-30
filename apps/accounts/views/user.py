@@ -69,29 +69,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(is_active=is_active.lower() == "true")
             return qs
         
-        # --- SERVICE_DEPT_ADMIN: own dept only, self excluded ---
-        if user.has_role(Roles.SERVICE_DEPT_ADMIN):
+        # --- SERVICE_DEPT_ADMIN and SERVICE_DEPT_STAFF: own dept only ---
+        if user.has_any_role([Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF]):
             user_dept = getattr(user, "service_department_id", None)
             user_dept_id = getattr(user_dept, "id", None) if user_dept else None
 
             if user_dept_id is None:
                 # Misconfigured admin — fall back to showing only self
-                qs = qs.filter(id=user.id)
-            else:
-                qs = qs.filter(service_department_id_id=user_dept_id).exclude(id=user.id)
-
-            if role_id:
-                qs = qs.filter(role_id_id=role_id)
-            if is_active is not None:
-                qs = qs.filter(is_active=is_active.lower() == "true")
-            return qs
-
-        # --- SERVICE_DEPT_STAFF: own dept only, self included ---
-        if user.has_role(Roles.SERVICE_DEPT_STAFF):
-            user_dept = getattr(user, "service_department_id", None)
-            user_dept_id = getattr(user_dept, "id", None) if user_dept else None
-
-            if user_dept_id is None:
                 qs = qs.filter(id=user.id)
             else:
                 qs = qs.filter(service_department_id_id=user_dept_id)
