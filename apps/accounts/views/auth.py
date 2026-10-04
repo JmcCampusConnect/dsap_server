@@ -1,6 +1,5 @@
 import time
 from django.conf import settings
-from django.utils import timezone
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
@@ -41,24 +40,6 @@ def _set_refresh_cookie(response, refresh_token: str, max_age: int = None) -> No
     )
 
 
-def get_max_absolute_lifetime(user, remember_me: bool) -> int | None:
-    
-    role = user.role_name
-
-    if role in ('SYSTEM_ADMIN', 'SERVICE_DEPT_ADMIN'):
-        return 24 * 3600
-
-    if role in ('SUBJECT_TEACHING_STAFF', 'SERVICE_DEPT_STAFF'):
-        return 7 * 24 * 3600
-
-    if role == 'STUDENT':
-        if remember_me:
-            return 7 * 24 * 3600
-        else:
-            return 30 * 24 * 3600
-    return None
-
-
 class LoginView(TokenObtainPairView):
 
     serializer_class = CustomTokenObtainPairSerializer
@@ -74,7 +55,6 @@ class LoginView(TokenObtainPairView):
             user = serializer.user
 
             refresh_token_str = serializer.validated_data.get('refresh')
-            remember = request.data.get('remember', False)
 
             access_token = AccessToken.for_user(user)
             session_started_at = int(time.time())
@@ -85,14 +65,13 @@ class LoginView(TokenObtainPairView):
                 'access': str(access_token),
             }, status=status.HTTP_200_OK)
 
-            max_age = settings.REFRESH_COOKIE_PERSISTENT_AGE if remember else None
-            _set_refresh_cookie(response, refresh_token_str, max_age=max_age)
+            _set_refresh_cookie(response, refresh_token_str, max_age=None)
 
             AuditLog.log(
                 request=request,
                 action='LOGIN',
                 object_repr=f"User logged in" + (f" ({user.username})"),
-                changes={'remember': remember, 'success': True},
+                changes={'success': True},
                 user=user
             )
 
@@ -199,28 +178,9 @@ class CookieTokenRefreshView(APIView):
             return response
 
         session_started_at = old_token.payload.get('session_started_at')
-        remember_me = old_token.payload.get('remember_me', False)
-
-        if session_started_at:
-            max_lifetime = get_max_absolute_lifetime(user, remember_me)
-            if max_lifetime is not None:
-                elapsed = timezone.now().timestamp() - session_started_at
-                if elapsed > max_lifetime:
-                    try:
-                        old_token.blacklist()
-                    except TokenError:
-                        pass
-
-                    response = Response(
-                        {"detail": "Session exceeded maximum allowed lifetime. Please log in again."},
-                        status=status.HTTP_401_UNAUTHORIZED
-                    )
-                    response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
-                    return response
 
         try:
             new_refresh = CustomRefreshToken.for_user(user, session_started_at=session_started_at)
-            new_refresh.payload['remember_me'] = remember_me
         except Exception:
             response = Response(
                 {"detail": "Refresh token reuse detected.", "code": "token_reuse_detected"},
@@ -244,8 +204,7 @@ class CookieTokenRefreshView(APIView):
         new_access['role'] = user.role_name or ""
 
         response = Response({"accessToken": str(new_access)}, status=status.HTTP_200_OK)
-        max_age = settings.REFRESH_COOKIE_PERSISTENT_AGE if remember_me else None
-        _set_refresh_cookie(response, str(new_refresh), max_age=max_age)
+        _set_refresh_cookie(response, str(new_refresh), max_age=None)
         return response
 
 

@@ -9,29 +9,24 @@ import time
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
-    remember = serializers.BooleanField(default=False, write_only=True)
-    
     def validate(self, attrs):
-        
         username = attrs.get('username')
         password = attrs.get('password')
-        remember = attrs.get('remember', False)
-        
+
         try:
             user = User.objects.select_related('role_id', 'service_department_id', 'academic_department_id').get(username=username)
         except User.DoesNotExist:
             raise AuthenticationFailed('User not found!')
-        
+
         if not user.is_active:
             raise AuthenticationFailed('Account is deactivated!')
-        
+
         if not check_password(password, user.password_hash):
             raise AuthenticationFailed('Incorrect password!')
-        
+
         self.user = user
-        
+
         refresh = self.get_token(user)
-        refresh['remember_me'] = remember
         refresh['session_started_at'] = int(time.time())
 
         role_name = user.role_name or ""
@@ -44,6 +39,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "refresh": str(refresh),
         }
         return data
+
 
 class ValidateTokenSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -63,6 +59,7 @@ class ValidateTokenSerializer(serializers.Serializer):
     menus = serializers.ListField(child=serializers.CharField())
     capabilities = serializers.ListField(child=serializers.CharField())
     session_started_at = serializers.IntegerField(allow_null=True)
+
 
 class ResetPasswordSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, required=True)
