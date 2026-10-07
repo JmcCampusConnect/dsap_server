@@ -59,6 +59,9 @@ class ValidateTokenSerializer(serializers.Serializer):
     menus = serializers.ListField(child=serializers.CharField())
     capabilities = serializers.ListField(child=serializers.CharField())
     session_started_at = serializers.IntegerField(allow_null=True)
+    department_name = serializers.CharField(allow_null=True, allow_blank=True)
+    degree = serializers.CharField(allow_null=True, allow_blank=True)
+    branch = serializers.CharField(allow_null=True, allow_blank=True)
 
 
 class ResetPasswordSerializer(serializers.Serializer):

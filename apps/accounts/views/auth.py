@@ -104,9 +104,15 @@ class ValidateTokenView(APIView):
 
         role_name = user.role_name or ""
         department = ""
+        department_name = None
+        degree = None
+        branch = None
         if role_name == "STUDENT":
             academic_department = student.academic_department_id if student else user.academic_department_id
             if academic_department:
+                department_name = academic_department.code
+                degree = academic_department.degree
+                branch = academic_department.branch
                 department = ' - '.join(
                     part for part in (
                         academic_department.code,
@@ -136,6 +142,9 @@ class ValidateTokenView(APIView):
             'service_department_id': getattr(user.service_department_id, 'id', None) if user.service_department_id else None,
             'is_active': user.is_active,
             'department': department,
+            'department_name': department_name,
+            'degree': degree,
+            'branch': branch,
             'menus': menus,
             'capabilities': capabilities,
             'session_started_at': session_started_at,
