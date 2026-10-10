@@ -46,6 +46,7 @@ MENU_ACCESS_CONFIG = {
     "service_management": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "service_dept_management": [Roles.SYSTEM_ADMIN],
     "academic_dept_management": [Roles.SYSTEM_ADMIN],
+    "department_queue": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     
     # Reports
     "reports": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
@@ -74,6 +75,8 @@ CAPABILITY_MAP = {
     "request.submit": [Roles.STUDENT],
     "request.track_own": [Roles.STUDENT],
     "request.review": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
+    "queue.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
+    "queue.admin_actions": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "service.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "service_department.manage": [Roles.SERVICE_DEPT_ADMIN],
     "service_department.manage_all": [Roles.SYSTEM_ADMIN],

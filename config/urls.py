@@ -29,4 +29,7 @@ urlpatterns = [
 
     # Requests
     path("api/requests/", include("apps.requests.urls")),
+
+    # Department Queue (staff workflow management)
+    path("api/department-queue/", include("apps.department_queue.urls")),
 ]
