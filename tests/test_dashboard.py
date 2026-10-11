@@ -197,7 +197,10 @@ class DashboardAPITestCase(TestCase):
         )
         self.assertEqual(own_department["requests"], 2)
         self.assertEqual(own_department["staff"], 2)
-        self.assertEqual(system_response.data["staff_activity"][0]["username"], self.staff_user.username)
+        self.assertIn(
+            self.staff_user.username,
+            [item["username"] for item in system_response.data["staff_activity"]],
+        )
 
     def test_system_admin_revenue_uses_successful_payments_in_calendar_month(self):
         request = self.create_request(

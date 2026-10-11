@@ -216,6 +216,27 @@ class DashboardView(APIView):
             local_now.strftime("%Y-%m"), Decimal("0.00")
         )
 
+        staff_activity = []
+        if role in (Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN):
+            staff_history = WorkflowHistory.objects.filter(
+                step_id__responsible_role_id__name=Roles.SERVICE_DEPT_STAFF,
+                action_at__gte=month_start,
+                action_at__lt=next_month_start,
+            )
+            if role == Roles.SERVICE_DEPT_ADMIN:
+                staff_history = staff_history.filter(
+                    request_id__service_id__service_department_id_id=department_id
+                )
+            staff_activity = [
+                {
+                    "username": item["action_by_user_id__username"],
+                    "requests_handled": item["requests_handled"],
+                }
+                for item in staff_history.values("action_by_user_id__username")
+                .annotate(requests_handled=Count("request_id", distinct=True))
+                .order_by("-requests_handled", "action_by_user_id__username")[:8]
+            ]
+
         if system_admin:
             active_users = User.objects.filter(is_active=True).count()
             service_departments = ServiceDepartment.objects.count()
@@ -278,7 +299,6 @@ class DashboardView(APIView):
                 }
                 for department in ServiceDepartment.objects.order_by("name")
             ]
-            staff_activity = []
             activities = [
                 {
                     "id": activity.id,
@@ -298,25 +318,6 @@ class DashboardView(APIView):
             )
             service_departments = None
             department_overview = []
-            if role == Roles.SERVICE_DEPT_ADMIN:
-                staff_activity = [
-                    {
-                        "username": item["action_by_user_id__username"],
-                        "requests_handled": item["requests_handled"],
-                    }
-                    for item in WorkflowHistory.objects.filter(
-                        request_id__service_id__service_department_id_id=department_id,
-                        step_id__responsible_role_id__name=Roles.SERVICE_DEPT_STAFF,
-                        action_at__gte=month_start,
-                        action_at__lt=next_month_start,
-                    )
-                    .values("action_by_user_id__username")
-                    .annotate(requests_handled=Count("request_id", distinct=True))
-                    .order_by("-requests_handled", "action_by_user_id__username")[:8]
-                ]
-            else:
-                staff_activity = []
-
             activity_query = WorkflowHistory.objects.filter(
                 request_id__service_id__service_department_id_id=department_id
             )
