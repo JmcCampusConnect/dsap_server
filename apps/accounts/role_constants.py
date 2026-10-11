@@ -29,7 +29,7 @@ ROLE_CHOICES = [(r, r) for r in Roles.all()]
 MENU_ACCESS_CONFIG = {
     
     # Common - all authenticated
-    "dashboard": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
+    "dashboard": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "student_home": [Roles.STUDENT],
     "notifications": Roles.all(),
     "profile": Roles.all(),

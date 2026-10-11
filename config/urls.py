@@ -32,4 +32,7 @@ urlpatterns = [
 
     # Department Queue (staff workflow management)
     path("api/department-queue/", include("apps.department_queue.urls")),
+
+    # Role-scoped operational dashboard
+    path("api/dashboard/", include("apps.dashboard.urls")),
 ]
