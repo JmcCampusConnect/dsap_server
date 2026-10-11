@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.payments',
     'apps.notifications',
     'apps.reports',
+    'apps.department_queue',
 ]
 
 MIDDLEWARE = [
