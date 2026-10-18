@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.audit',
     'apps.students',
+    'apps.profile',
     'apps.departments',
     'apps.services',
     'apps.workflow',

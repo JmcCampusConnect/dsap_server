@@ -1,4 +1,5 @@
 from django.db import models
+from .fields import EncryptedTextField
 
 
 class Student(models.Model):
@@ -51,6 +52,11 @@ class Student(models.Model):
     )
     
     mobile_number = models.CharField(max_length=15)
+    religion = models.CharField(max_length=50, null=True, blank=True)
+    aadhaar_number = EncryptedTextField(null=True, blank=True)
+
+    parent_name = models.CharField(max_length=100, null=True, blank=True)
+    parent_mobile = models.CharField(max_length=15, null=True, blank=True)
 
     status = models.BooleanField(default=True)
 
