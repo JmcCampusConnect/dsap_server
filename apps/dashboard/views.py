@@ -390,7 +390,12 @@ class DashboardView(APIView):
                     "forwarded_this_week": forwarded_this_week,
                     "paid_revenue_this_month": (
                         str(paid_revenue)
-                        if role in (Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN)
+                        if role
+                        in (
+                            Roles.SYSTEM_ADMIN,
+                            Roles.SERVICE_DEPT_ADMIN,
+                            Roles.SERVICE_DEPT_STAFF,
+                        )
                         else None
                     ),
                     "active_users": active_users,
@@ -410,7 +415,12 @@ class DashboardView(APIView):
                 ],
                 "revenue_history": (
                     revenue_history
-                    if role in (Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN)
+                    if role
+                    in (
+                        Roles.SYSTEM_ADMIN,
+                        Roles.SERVICE_DEPT_ADMIN,
+                        Roles.SERVICE_DEPT_STAFF,
+                    )
                     else []
                 ),
                 "department_overview": department_overview,

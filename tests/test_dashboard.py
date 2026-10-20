@@ -172,7 +172,8 @@ class DashboardAPITestCase(TestCase):
         )
         self.assertEqual(staff_data["recent_activity"][0]["request_number"], "DASH-OWN-STAFF")
         self.assertNotIn("assigned_to_me", staff_data["metrics"])
-        self.assertIsNone(staff_data["metrics"]["paid_revenue_this_month"])
+        self.assertEqual(staff_data["metrics"]["paid_revenue_this_month"], "0.00")
+        self.assertEqual(len(staff_data["revenue_history"]), 6)
 
         self.client.force_authenticate(user=self.admin_user)
         admin_response = self.client.get("/api/dashboard/")
@@ -263,6 +264,50 @@ class DashboardAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["metrics"]["paid_revenue_this_month"], "19.25")
+        self.assertEqual(response.data["revenue_history"][-1]["amount"], "19.25")
+
+    def test_department_staff_revenue_is_limited_to_successful_department_payments(self):
+        own_request = self.create_request(
+            "DASH-STAFF-PAID",
+            self.staff_service,
+            RequestStatuses.DRAFT,
+        )
+        other_request = self.create_request(
+            "DASH-STAFF-OTHER-PAID",
+            self.other_service,
+            RequestStatuses.DRAFT,
+        )
+        pending_request = self.create_request(
+            "DASH-STAFF-PENDING",
+            self.staff_service,
+            RequestStatuses.DRAFT,
+        )
+        paid_at = timezone.now()
+        Payment.objects.create(
+            request_id=own_request,
+            amount=Decimal("19.25"),
+            payment_status="SUCCESS",
+            paid_at=paid_at,
+        )
+        Payment.objects.create(
+            request_id=other_request,
+            amount=Decimal("80.00"),
+            payment_status="SUCCESS",
+            paid_at=paid_at,
+        )
+        Payment.objects.create(
+            request_id=pending_request,
+            amount=Decimal("88.00"),
+            payment_status="PENDING",
+            paid_at=paid_at,
+        )
+
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get("/api/dashboard/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["metrics"]["paid_revenue_this_month"], "19.25")
+        self.assertEqual(len(response.data["revenue_history"]), 6)
         self.assertEqual(response.data["revenue_history"][-1]["amount"], "19.25")
 
     def test_empty_department_has_zero_metrics_and_empty_collections(self):
