@@ -6,7 +6,7 @@ class Student(models.Model):
     class StreamChoices(models.TextChoices):
         SFM = 'SFM', 'SFM'
         SFW = 'SFW', 'SFW'
-        AIDED = 'AIDED', 'Aided'
+        AIDED = 'Aided', 'Aided'
 
     id = models.BigAutoField(primary_key=True)
 

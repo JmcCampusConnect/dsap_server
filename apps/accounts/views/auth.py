@@ -238,8 +238,10 @@ class LogoutView(APIView):
         AuditLog.log(
             request=request,
             action='LOGOUT',
-            object_repr=f"User logged out" + (f" ({user.username})"),
-            changes={'user_id': user.id}
+            object_repr=(
+                f"User logged out ({user.username})" if user else "User logged out"
+            ),
+            changes={'user_id': user.id} if user else {},
         )
 
         response = Response({"detail": "Logged out."}, status=status.HTTP_200_OK)

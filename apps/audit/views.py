@@ -1,14 +1,16 @@
 from django.db import models
 from django.http import HttpResponse
 from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from openpyxl import Workbook
+from apps.accounts.permissions import IsSystemAdmin
 from common.pagination import StandardPagination
 from .models import AuditLog
 
 
 class AuditLogListView(ListAPIView):
-    
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
     queryset = AuditLog.objects.all()
     pagination_class = StandardPagination
 
@@ -71,6 +73,8 @@ class AuditLogListView(ListAPIView):
 
 
 class AuditLogStatsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         total = AuditLog.objects.count()
 
@@ -80,6 +84,8 @@ class AuditLogStatsView(ListAPIView):
 
 
 class AuditLogActionsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         actions = [
             {
@@ -93,6 +99,8 @@ class AuditLogActionsView(ListAPIView):
 
 
 class AuditLogModelsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         models = (
             AuditLog.objects
@@ -107,6 +115,7 @@ class AuditLogModelsView(ListAPIView):
 
 
 class AuditLogExportView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get(self, request, *args, **kwargs):
         queryset = AuditLog.objects.all()

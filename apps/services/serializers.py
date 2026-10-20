@@ -95,7 +95,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             "custom_fields",
             "workflow_steps",
         ]
-        read_only_fields = ["id", "code", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "code", "created_at", "updated_at"]
         extra_kwargs = {
             "service_department_id": {"write_only": True, "required": False},
         }

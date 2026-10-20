@@ -83,9 +83,9 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         student = serializer.save()
 
-        self.assertEqual(student.stream, 'AIDED')
+        self.assertEqual(student.stream, 'Aided')
         self.assertEqual(student.user_id.username, '12CSE0002')
-        self.assertEqual(Student.objects.get(register_number='12CSE0002').stream, 'AIDED')
+        self.assertEqual(Student.objects.get(register_number='12CSE0002').stream, 'Aided')
 
     def test_create_student_accepts_inactive_status(self):
         serializer = StudentSerializer(

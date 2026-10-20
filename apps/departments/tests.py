@@ -6,6 +6,9 @@ from apps.accounts.models import Role, User
 from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from apps.departments.models import AcademicDepartment
+from apps.departments.serializers.academic_department import (
+    AcademicDepartmentSerializer,
+)
 
 
 class AcademicDepartmentSoftDeleteTests(TestCase):
@@ -84,3 +87,14 @@ class AcademicDepartmentSoftDeleteTests(TestCase):
             object_id=str(self.dept_active.pk)
         ).first()
         self.assertIsNotNone(audit_entry)
+
+    def test_serializer_accepts_status_updates(self):
+        serializer = AcademicDepartmentSerializer(
+            instance=self.dept_active,
+            data={'status': 'inactive'},
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        department = serializer.save()
+        self.assertEqual(department.status, 'inactive')

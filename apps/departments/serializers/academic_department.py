@@ -9,7 +9,8 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
     category = serializers.CharField(max_length=100)
     status = serializers.ChoiceField(
         choices=AcademicDepartment.STATUS_CHOICES,
-        read_only=True
+        required=False,
+        default='active',
     )
     
     class Meta:
@@ -18,7 +19,7 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
             "id", "stream", "type", "category", "degree", "branch", "code", 
             "status", "created_at", "updated_at"
         ]
-        read_only_fields = ["id", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
         validators = []
 
 

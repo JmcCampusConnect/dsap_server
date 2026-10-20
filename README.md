@@ -60,7 +60,7 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements/dev.txt
+pip install -r requirements-dev.txt
 
 # Copy environment variables and fill in the values
 cp .env.example .env
@@ -599,5 +599,4 @@ Use Squash and Merge on GitHub. Each PR becomes a single commit on `development`
 4. Address review feedback and wait for approval
 
 ---
-
 
