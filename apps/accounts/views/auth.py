@@ -1,11 +1,12 @@
 import time
+import re
 from django.conf import settings
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -20,23 +21,48 @@ from ..models import User
 
 if settings.DEBUG:
     REFRESH_COOKIE_NAME = "refresh"
+    TAB_REFRESH_COOKIE_PREFIX = "refresh"
     REFRESH_COOKIE_PATH = "/"
+    TAB_REFRESH_COOKIE_PATH = "/"
     COOKIE_SECURE = False
 else:
     REFRESH_COOKIE_NAME = "__Host-refresh"
+    TAB_REFRESH_COOKIE_PREFIX = "__Secure-refresh"
     REFRESH_COOKIE_PATH = "/api/auth/refresh/"
+    TAB_REFRESH_COOKIE_PATH = "/api/auth/"
     COOKIE_SECURE = True
 
 
-def _set_refresh_cookie(response, refresh_token: str, max_age: int = None) -> None:
+def _get_refresh_cookie_name(request) -> str:
+    tab_id = request.headers.get("X-Auth-Tab-ID")
+    if tab_id is None:
+        return REFRESH_COOKIE_NAME
+    if not re.fullmatch(r"[0-9a-f]{32}", tab_id):
+        raise ValidationError("Invalid authentication tab identifier.")
+    return f"{TAB_REFRESH_COOKIE_PREFIX}-{tab_id}"
+
+
+def _get_refresh_cookie_path(cookie_name: str) -> str:
+    if cookie_name.startswith(f"{TAB_REFRESH_COOKIE_PREFIX}-"):
+        return TAB_REFRESH_COOKIE_PATH
+    return REFRESH_COOKIE_PATH
+
+
+def _set_refresh_cookie(
+    response,
+    refresh_token: str,
+    max_age: int = None,
+    cookie_name: str = REFRESH_COOKIE_NAME,
+    cookie_path: str = REFRESH_COOKIE_PATH,
+) -> None:
     response.set_cookie(
-        REFRESH_COOKIE_NAME,
+        cookie_name,
         refresh_token,
         max_age=max_age,
         httponly=True,
         secure=COOKIE_SECURE,
         samesite="Strict",
-        path=REFRESH_COOKIE_PATH,
+        path=cookie_path,
     )
 
 
@@ -65,7 +91,14 @@ class LoginView(TokenObtainPairView):
                 'access': str(access_token),
             }, status=status.HTTP_200_OK)
 
-            _set_refresh_cookie(response, refresh_token_str, max_age=None)
+            cookie_name = _get_refresh_cookie_name(request)
+            _set_refresh_cookie(
+                response,
+                refresh_token_str,
+                max_age=None,
+                cookie_name=cookie_name,
+                cookie_path=_get_refresh_cookie_path(cookie_name),
+            )
 
             AuditLog.log(
                 request=request,
@@ -160,7 +193,8 @@ class CookieTokenRefreshView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        refresh_token = request.COOKIES.get(REFRESH_COOKIE_NAME)
+        cookie_name = _get_refresh_cookie_name(request)
+        refresh_token = request.COOKIES.get(cookie_name)
         if not refresh_token:
             return Response(
                 {"detail": "Refresh token is missing.", "code": "refresh_token_missing"},
@@ -171,19 +205,19 @@ class CookieTokenRefreshView(APIView):
             old_token = RefreshToken(refresh_token)
         except TokenError as e:
             response = Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
-            response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+            response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
             return response
 
         try:
             user = User.objects.get(id=old_token['user_id'])
         except User.DoesNotExist:
             response = Response({"detail": "User not found."}, status=status.HTTP_401_UNAUTHORIZED)
-            response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+            response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
             return response
 
         if not user.is_active:
             response = Response({"detail": "User account is inactive."}, status=status.HTTP_403_FORBIDDEN)
-            response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+            response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
             return response
 
         session_started_at = old_token.payload.get('session_started_at')
@@ -195,7 +229,7 @@ class CookieTokenRefreshView(APIView):
                 {"detail": "Refresh token reuse detected.", "code": "token_reuse_detected"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-            response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+            response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
             return response
 
         try:
@@ -205,7 +239,7 @@ class CookieTokenRefreshView(APIView):
                 {"detail": "Refresh token reuse detected.", "code": "token_reuse_detected"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-            response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+            response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
             return response
 
         new_access = AccessToken.for_user(user)
@@ -213,7 +247,13 @@ class CookieTokenRefreshView(APIView):
         new_access['role'] = user.role_name or ""
 
         response = Response({"accessToken": str(new_access)}, status=status.HTTP_200_OK)
-        _set_refresh_cookie(response, str(new_refresh), max_age=None)
+        _set_refresh_cookie(
+            response,
+            str(new_refresh),
+            max_age=None,
+            cookie_name=cookie_name,
+            cookie_path=_get_refresh_cookie_path(cookie_name),
+        )
         return response
 
 
@@ -222,7 +262,8 @@ class LogoutView(APIView):
     permission_classes = []
 
     def post(self, request):
-        refresh_token = request.COOKIES.get(REFRESH_COOKIE_NAME)
+        cookie_name = _get_refresh_cookie_name(request)
+        refresh_token = request.COOKIES.get(cookie_name)
         user = None
 
         if refresh_token:
@@ -235,15 +276,17 @@ class LogoutView(APIView):
             except Exception:
                 pass
 
-        AuditLog.log(
-            request=request,
-            action='LOGOUT',
-            object_repr=f"User logged out" + (f" ({user.username})"),
-            changes={'user_id': user.id}
-        )
+        if user:
+            AuditLog.log(
+                request=request,
+                action='LOGOUT',
+                object_repr=f"User logged out ({user.username})",
+                changes={'user_id': user.id},
+                user=user,
+            )
 
         response = Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
-        response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+        response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
         return response
 
 
@@ -271,5 +314,6 @@ class LogoutAllView(APIView):
             {'detail': f'All {count} sessions logged out successfully'},
             status=status.HTTP_200_OK
         )
-        response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+        cookie_name = _get_refresh_cookie_name(request)
+        response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
         return response

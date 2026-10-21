@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
 from django.core.exceptions import ImproperlyConfigured
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -166,6 +167,7 @@ else:
         if origin.strip()
     ]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (*default_headers, 'x-auth-tab-id')
 
 # ----------------------------------------------------------------------
 # CSRF Cookie Hardening (defense‑in‑depth)
