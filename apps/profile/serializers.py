@@ -3,39 +3,10 @@ from rest_framework import serializers
 from apps.accounts.models import User
 from apps.students.models import Student
 
-
-# ---------------------------------------------------------------------
-# Masking helpers
-# ---------------------------------------------------------------------
-def mask_aadhaar(value) -> str:
-    """Render a 12-digit Aadhaar as ``XXXX XXXX 1234``."""
-    if not value:
-        return "Not provided"
-    digits = "".join(ch for ch in str(value) if ch.isdigit())
-    if len(digits) < 4:
-        return "Not provided"
-    return f"XXXX XXXX {digits[-4:]}"
-
-
-def mask_parent_mobile(value) -> str:
-    """Render a 10-digit mobile as ``+91 NN•••• NNNN``."""
-    if not value:
-        return "Not provided"
-    digits = "".join(ch for ch in str(value) if ch.isdigit())
-    # Strip a leading country code so both storage shapes render alike.
-    if len(digits) == 12 and digits.startswith("91"):
-        digits = digits[2:]
-    if len(digits) != 10:
-        return "Not provided"
-    return f"+91 {digits[:2]}•••• {digits[-4:]}"
-
-
 # ---------------------------------------------------------------------
 # Student composite
 # ---------------------------------------------------------------------
 class StudentPersonalSerializer(serializers.ModelSerializer):
-    aadhaar_number = serializers.SerializerMethodField()
-    parent_mobile = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
@@ -43,18 +14,8 @@ class StudentPersonalSerializer(serializers.ModelSerializer):
             "register_number",
             "name",
             "dob",
-            "religion",
-            "aadhaar_number",
-            "parent_name",
-            "parent_mobile",
         ]
         read_only_fields = fields
-
-    def get_aadhaar_number(self, obj):
-        return mask_aadhaar(obj.aadhaar_number)
-
-    def get_parent_mobile(self, obj):
-        return mask_parent_mobile(obj.parent_mobile)
 
 
 class StudentAcademicSerializer(serializers.ModelSerializer):

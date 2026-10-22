@@ -1,8 +1,8 @@
 """
 Tests for GET /api/profile/ and PATCH /api/profile/.
 
-Covers permissions, role-shaped responses, masking, editable-field
-allow-list, validation, duplicate-email 409, and AuditLog writes.
+Covers permissions, role-shaped responses, editable-field allow-list,
+validation, duplicate-email 409, and AuditLog writes.
 """
 
 from datetime import date
@@ -52,10 +52,6 @@ class ProfileAPITestBase(TestCase):
             stream="SFM",
             mobile_number="9876543210",
             status=True,
-            religion="Islam",
-            aadhaar_number="123456784821",
-            parent_name="Rasak Senior",
-            parent_mobile="9876543321",
         )
 
         self.staff_user = User.objects.create(
@@ -118,23 +114,6 @@ class StudentProfileReadTests(ProfileAPITestBase):
         data = self.client.get(self.url).data["contact"]
         self.assertEqual(data["mobile_number"], "9876543210")
         self.assertEqual(data["email"], "student057@example.com")
-
-    def test_aadhaar_masked_to_last_four(self):
-        data = self.client.get(self.url).data["profile"]
-        self.assertEqual(data["aadhaar_number"], "XXXX XXXX 4821")
-
-    def test_parent_mobile_masked(self):
-        data = self.client.get(self.url).data["profile"]
-        self.assertEqual(data["parent_mobile"], "+91 98•••• 3321")
-
-    def test_null_masked_fields_render_placeholder(self):
-        self.student.aadhaar_number = None
-        self.student.parent_mobile = None
-        self.student.save()
-
-        data = self.client.get(self.url).data["profile"]
-        self.assertEqual(data["aadhaar_number"], "Not provided")
-        self.assertEqual(data["parent_mobile"], "Not provided")
 
 
 # ---------------------------------------------------------------------
