@@ -1,23 +1,5 @@
+# Generated manually for safe PostgreSQL type conversion
 from django.db import migrations, models
-
-
-def normalize_status_values(apps, schema_editor):
-    department = apps.get_model('departments', 'AcademicDepartment')
-    queryset = department.objects.using(schema_editor.connection.alias)
-    truthy = {'active', 'true', '1', 't'}
-
-    for primary_key, value in list(queryset.values_list('pk', 'status')):
-        normalized = '1' if str(value).strip().lower() in truthy else '0'
-        queryset.filter(pk=primary_key).update(status=normalized)
-
-
-def restore_status_values(apps, schema_editor):
-    department = apps.get_model('departments', 'AcademicDepartment')
-    queryset = department.objects.using(schema_editor.connection.alias)
-
-    for primary_key, value in list(queryset.values_list('pk', 'status')):
-        normalized = 'ACTIVE' if str(value).strip().lower() in {'1', 'true', 't'} else 'INACTIVE'
-        queryset.filter(pk=primary_key).update(status=normalized)
 
 
 class Migration(migrations.Migration):
@@ -27,10 +9,29 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(normalize_status_values, restore_status_values),
-        migrations.AlterField(
-            model_name='academicdepartment',
-            name='status',
-            field=models.BooleanField(default=True),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AlterField(
+                    model_name='academicdepartment',
+                    name='status',
+                    field=models.BooleanField(default=True),
+                ),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        "ALTER TABLE academic_department ALTER COLUMN status DROP DEFAULT; "
+                        "ALTER TABLE academic_department ALTER COLUMN status TYPE boolean "
+                        "USING (CASE WHEN UPPER(status::text) IN ('ACTIVE', 'TRUE', '1', 'T') THEN TRUE ELSE FALSE END); "
+                        "ALTER TABLE academic_department ALTER COLUMN status SET DEFAULT TRUE;"
+                    ),
+                    reverse_sql=(
+                        "ALTER TABLE academic_department ALTER COLUMN status DROP DEFAULT; "
+                        "ALTER TABLE academic_department ALTER COLUMN status TYPE varchar(10) "
+                        "USING (CASE WHEN status IS TRUE THEN 'ACTIVE' ELSE 'INACTIVE' END); "
+                        "ALTER TABLE academic_department ALTER COLUMN status SET DEFAULT 'ACTIVE';"
+                    ),
+                ),
+            ],
         ),
     ]

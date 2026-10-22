@@ -36,7 +36,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     list / retrieve        -> any authenticated user (AllowAny for dev)
     create / update        -> system_admin / service_dept_admin
-    destroy (soft-delete)  -> sets status to inactive
+    destroy (soft-delete)  -> toggles status (True <-> False)
     options_list           -> dropdown data for forms
     public_list            -> public directory (active services only)
     """
@@ -191,19 +191,19 @@ class ServiceViewSet(viewsets.ModelViewSet):
             changes=changes,
         )
 
-    # ── Soft-delete (deactivate) ─────────────────────────────────
+    # ── Soft-delete (toggle ACTIVE <-> INACTIVE) ─────────────────
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         old_status = instance.status
-        if old_status:
-            instance.status = False
-            instance.save(update_fields=['status', 'updated_at'])
-            AuditLog.log(
-                request=request,
-                action="DEACTIVATE",
-                obj=instance,
-                changes={"status": {"old": old_status, "new": instance.status}},
-            )
+        instance.status = not instance.status
+        action = "ACTIVATE" if instance.status else "DEACTIVATE"
+        instance.save(update_fields=['status', 'updated_at'])
+        AuditLog.log(
+            request=request,
+            action=action,
+            obj=instance,
+            changes={"status": {"old": old_status, "new": instance.status}},
+        )
         return Response(ServiceSerializer(instance).data)
 
     # ── Dropdown options ─────────────────────────────────────────

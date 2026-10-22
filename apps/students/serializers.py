@@ -98,7 +98,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
         lookup = normalized.upper()
         if lookup == 'AIDED':
-            return 'Aided'
+            return 'AIDED'
         if lookup in {'SFM', 'SFW'}:
             return lookup
 

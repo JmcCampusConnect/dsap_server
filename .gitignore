@@ -12,13 +12,8 @@ __pycache__/
 # IDE files
 .vscode/
 .idea/
-.pytest_cache/
-.ruff_cache/
 
 # OS files
 .DS_Store
 
 media/
-
-pytest.ini
-requirements-dev.txt
