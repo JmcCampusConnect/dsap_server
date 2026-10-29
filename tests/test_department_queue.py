@@ -72,6 +72,12 @@ class DepartmentQueueTestCase(TestCase):
         detail_res = self.client.get(f"/api/department-queue/{coe_req.id}/", HTTP_HOST="localhost")
         self.assertEqual(detail_res.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_res.data["request_number"], "REQ-2026-0001")
+        student = coe_req.student_id
+        self.assertEqual(detail_res.data["student"]["degree"], student.academic_department_id.degree)
+        self.assertEqual(
+            detail_res.data["student"]["department_name"],
+            student.academic_department_id.branch,
+        )
 
     # ----------------------------------------------------------------------
     # 4. Users cannot act on workflow steps they are not authorized to handle

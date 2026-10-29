@@ -18,7 +18,8 @@ from apps.payments.models import Payment
 # ---------------------------------------------------------------------------
 
 class StudentInfoSerializer(serializers.ModelSerializer):
-    department_name = serializers.SerializerMethodField()
+    degree = serializers.CharField(source='academic_department_id.degree', read_only=True)
+    department_name = serializers.CharField(source='academic_department_id.branch', read_only=True)
 
     class Meta:
         model = Student
@@ -30,14 +31,9 @@ class StudentInfoSerializer(serializers.ModelSerializer):
             'year_of_admission',
             'section',
             'stream',
+            'degree',
             'department_name',
         ]
-
-    def get_department_name(self, obj):
-        dept = getattr(obj, 'academic_department_id', None)
-        if dept:
-            return dept.name
-        return None
 
 
 class QueueDocumentSerializer(serializers.ModelSerializer):
