@@ -6,6 +6,8 @@ from .views import DeptQueueViewSet
 queue_list = DeptQueueViewSet.as_view({'get': 'list'})
 queue_detail = DeptQueueViewSet.as_view({'get': 'retrieve'})
 queue_document_verify = DeptQueueViewSet.as_view({'patch': 'verify_document'})
+queue_document_view = DeptQueueViewSet.as_view({'get': 'view_document'})
+queue_document_download = DeptQueueViewSet.as_view({'get': 'download_document'})
 queue_forward = DeptQueueViewSet.as_view({'post': 'forward'})
 queue_return = DeptQueueViewSet.as_view({'post': 'return_request'})
 queue_approve = DeptQueueViewSet.as_view({'post': 'approve'})
@@ -17,6 +19,8 @@ urlpatterns = [
     path('', queue_list, name='department-queue-list'),
     path('<int:pk>/', queue_detail, name='department-queue-detail'),
     path('<int:pk>/documents/<int:doc_id>/', queue_document_verify, name='department-queue-document-verify'),
+    path('<int:pk>/documents/<int:doc_id>/view/', queue_document_view, name='department-queue-document-view'),
+    path('<int:pk>/documents/<int:doc_id>/download/', queue_document_download, name='department-queue-document-download'),
     path('<int:pk>/forward/', queue_forward, name='department-queue-forward'),
     path('<int:pk>/return/', queue_return, name='department-queue-return'),
     path('<int:pk>/approve/', queue_approve, name='department-queue-approve'),
