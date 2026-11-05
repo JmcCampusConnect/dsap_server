@@ -1,3 +1,7 @@
+from uuid import uuid4
+
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -398,3 +402,62 @@ class DepartmentQueueTestCase(TestCase):
 
         timestamps = [h["action_at"] for h in history]
         self.assertEqual(timestamps, sorted(timestamps))
+
+    # ----------------------------------------------------------------------
+    # 17. Queue roles can view and download request documents
+    # ----------------------------------------------------------------------
+    def test_17_queue_roles_can_view_and_download_documents(self):
+        req = Request.objects.get(request_number="REQ-2026-0001")
+        doc = Document.objects.filter(request_id=req).first()
+        self.assertIsNotNone(doc)
+
+        file_path = default_storage.save(
+            "test-documents/department-queue-document.pdf",
+            ContentFile(b"%PDF-1.4 test document"),
+        )
+        original_path = doc.file_path
+        doc.file_path = file_path
+        doc.save(update_fields=["file_path"])
+
+        try:
+            for user in (self.sysadmin, self.coe_admin, self.coe_staff):
+                self.client.force_authenticate(user=user)
+                for action, disposition in (
+                    ("view", "inline"),
+                    ("download", "attachment"),
+                ):
+                    response = self.client.get(
+                        f"/api/department-queue/{req.id}/documents/{doc.id}/{action}/",
+                        HTTP_HOST="localhost",
+                    )
+                    self.assertEqual(response.status_code, status.HTTP_200_OK)
+                    self.assertEqual(response["Content-Type"], "application/pdf")
+                    self.assertIn(disposition, response["Content-Disposition"])
+                    self.assertEqual(
+                        b"".join(response.streaming_content),
+                        b"%PDF-1.4 test document",
+                    )
+                    response.close()
+        finally:
+            doc.file_path = original_path
+            doc.save(update_fields=["file_path"])
+            default_storage.delete(file_path)
+
+    # ----------------------------------------------------------------------
+    # 18. Missing request documents return a clear not-found response
+    # ----------------------------------------------------------------------
+    def test_18_missing_document_file_returns_not_found(self):
+        req = Request.objects.get(request_number="REQ-2026-0001")
+        doc = Document.objects.filter(request_id=req).first()
+        self.assertIsNotNone(doc)
+        doc.file_path = f"test-documents/missing-{uuid4().hex}.pdf"
+        doc.save(update_fields=["file_path"])
+        self.client.force_authenticate(user=self.sysadmin)
+
+        for action in ("view", "download"):
+            response = self.client.get(
+                f"/api/department-queue/{req.id}/documents/{doc.id}/{action}/",
+                HTTP_HOST="localhost",
+            )
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+            self.assertEqual(response.data["detail"], "Document file is unavailable.")

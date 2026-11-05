@@ -13,11 +13,17 @@ Endpoint summary:
   POST   /api/department-queue/{id}/reject/             Reject the request
   POST   /api/department-queue/{id}/complete/           Mark as completed/issued
   GET    /api/department-queue/{id}/history/            Chronological workflow history
+  GET    /api/department-queue/{id}/documents/{doc_id}/view/
+  GET    /api/department-queue/{id}/documents/{doc_id}/download/
 """
 import logging
+import mimetypes
+from pathlib import Path
 
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Q
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, status
@@ -31,16 +37,20 @@ from apps.accounts.role_constants import Roles
 from apps.documents.models import Document
 from apps.requests.models import Request
 from apps.services.models import ServiceDocument
-from apps.workflow.constants import AllowedActions, NotificationEventCodes, RequestStatuses
+from apps.workflow.constants import (
+    AllowedActions,
+    NotificationEventCodes,
+    RequestStatuses,
+)
 from apps.workflow.models import WorkflowHistory, WorkflowStep
 from common.pagination import StandardPagination
 
 from .notification_service import send_workflow_notification
 from .permissions import IsDeptAdmin, IsDeptQueueUser
 from .serializers import (
-    DocumentVerifySerializer,
     DeptQueueDetailSerializer,
     DeptQueueListSerializer,
+    DocumentVerifySerializer,
     QueueWorkflowHistorySerializer,
     WorkflowActionSerializer,
 )
@@ -170,6 +180,40 @@ class DeptQueueViewSet(GenericViewSet):
                 raise PermissionDenied({'detail': 'You do not have permission to access requests outside your department.'})
 
         return req
+
+    def _document_file_response(self, request_obj, doc_id, *, as_attachment):
+        try:
+            document = Document.objects.get(pk=doc_id, request_id=request_obj)
+        except Document.DoesNotExist:
+            return Response(
+                {'detail': 'Document not found for this request.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not document.file_path or not default_storage.exists(document.file_path):
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            file_obj = default_storage.open(document.file_path, 'rb')
+        except FileNotFoundError:
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = Path(document.file_path).name
+        content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+        response = FileResponse(
+            file_obj,
+            as_attachment=as_attachment,
+            filename=filename,
+            content_type=content_type,
+        )
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     def _assert_step_permission(self, request_obj, action_code):
         """
@@ -611,3 +655,19 @@ class DeptQueueViewSet(GenericViewSet):
             'current_status': request_obj.current_status,
             'history': serializer.data,
         })
+
+    # ------------------------------------------------------------------
+    # GET /api/department-queue/{id}/documents/{doc_id}/view/
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/view')
+    def view_document(self, request, pk=None, doc_id=None):
+        request_obj = self._get_request_or_403(pk)
+        return self._document_file_response(request_obj, doc_id, as_attachment=False)
+
+    # ------------------------------------------------------------------
+    # GET /api/department-queue/{id}/documents/{doc_id}/download/
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/download')
+    def download_document(self, request, pk=None, doc_id=None):
+        request_obj = self._get_request_or_403(pk)
+        return self._document_file_response(request_obj, doc_id, as_attachment=True)
