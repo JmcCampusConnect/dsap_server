@@ -125,14 +125,13 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         )
 
     def destroy(self, request, *args, **kwargs):
-        """
-        Soft delete (Deactivate) - only System Admin can call this (permission enforced).
-        """
+        """Soft delete (deactivate) a service department."""
         department = self.get_object()
         snapshot = self.get_serializer(department).data
         object_id = department.pk
+
         department.status = "inactive"
-        department.save()
+        department.save(update_fields=["status", "updated_at"])
 
         AuditLog.log(
             request=request,
