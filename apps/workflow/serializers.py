@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from apps.workflow.models import WorkflowStep, WorkflowHistory
 from apps.accounts.models import Role
+from apps.accounts.role_constants import Roles
 from apps.workflow.constants import ActionTypes, AllowedActions
 
 
@@ -17,7 +18,7 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
     """
     responsible_role = RoleRefSerializer(source="responsible_role_id", read_only=True)
     responsible_role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(),
+        queryset=Role.objects.filter(name__in=Roles.all()),
         write_only=False,
     )
 

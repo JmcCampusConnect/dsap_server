@@ -6,7 +6,6 @@ class Roles:
     SERVICE_DEPT_ADMIN = "SERVICE_DEPT_ADMIN"
     SERVICE_DEPT_STAFF = "SERVICE_DEPT_STAFF"
     STUDENT = "STUDENT"
-    SUBJECT_TEACHING_STAFF = "SUBJECT_TEACHING_STAFF"
 
     @classmethod
     def all(cls) -> List[str]:
@@ -15,7 +14,6 @@ class Roles:
             cls.SERVICE_DEPT_ADMIN,
             cls.SERVICE_DEPT_STAFF,
             cls.STUDENT,
-            cls.SUBJECT_TEACHING_STAFF,
         ]
 
     @classmethod
@@ -50,9 +48,9 @@ MENU_ACCESS_CONFIG = {
     
     # Reports
     "reports": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "subjects": [Roles.SYSTEM_ADMIN, Roles.SUBJECT_TEACHING_STAFF],
-    "attendance": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF, Roles.SUBJECT_TEACHING_STAFF],
-    "results": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SUBJECT_TEACHING_STAFF, Roles.STUDENT],
+    "subjects": [Roles.SYSTEM_ADMIN],
+    "attendance": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
+    "results": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.STUDENT],
     "my_department": [Roles.SERVICE_DEPT_ADMIN],
 
     # System Admin only
