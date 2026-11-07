@@ -105,6 +105,7 @@ class LoginView(TokenObtainPairView):
                 action='LOGIN',
                 object_repr=f"User logged in" + (f" ({user.username})"),
                 changes={'success': True},
+                obj=user,
                 user=user
             )
 
@@ -282,6 +283,7 @@ class LogoutView(APIView):
                 action='LOGOUT',
                 object_repr=f"User logged out ({user.username})",
                 changes={'user_id': user.id},
+                obj=user,
                 user=user,
             )
 
@@ -307,7 +309,9 @@ class LogoutAllView(APIView):
             request=request,
             action='LOGOUT',
             object_repr=f"User logged out from all sessions ({user.username})",
-            changes={'user_id': user.id, 'sessions_logged_out': count}
+            changes={'user_id': user.id, 'sessions_logged_out': count},
+            obj=user,
+            user=user,
         )
 
         response = Response(

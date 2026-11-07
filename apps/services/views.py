@@ -232,7 +232,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         code_options = [{"value": c, "label": c} for c in codes if c]
         name_options = [{"value": n, "label": n} for n in names if n]
 
-        roles = Role.objects.all().order_by("name")
+        roles = Role.objects.filter(name__in=Roles.all()).order_by("name")
         role_options = [
             {
                 "value": str(r.id),

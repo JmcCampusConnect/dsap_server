@@ -33,10 +33,6 @@ def run() -> dict[str, Any]:
             "description": "Service Department Staff",
         },
         {
-            "name": "SUBJECT_TEACHING_STAFF",
-            "description": "Subject Teaching Staff",
-        },
-        {
             "name": "STUDENT",
             "description": "Student",
         },

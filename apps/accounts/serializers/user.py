@@ -24,7 +24,10 @@ class AcademicDepartmentBriefSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source="role_id.name", read_only=True)
-    role_id = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), required=False)
+    role_id = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.filter(name__in=Roles.all()),
+        required=False,
+    )
     password = serializers.CharField(write_only=True, required=False)
     
     # Writable FK ids (UI submits numeric ids).
@@ -60,7 +63,7 @@ class UserSerializer(serializers.ModelSerializer):
             if value.name!= Roles.SERVICE_DEPT_STAFF:
                 raise serializers.ValidationError("Service Dept Admin can only create/assign Service Dept Staff")
         # STAFF/STUDENT cannot assign roles
-        if request.user.has_any_role([Roles.SERVICE_DEPT_STAFF, Roles.STUDENT, Roles.SUBJECT_TEACHING_STAFF]):
+        if request.user.has_any_role([Roles.SERVICE_DEPT_STAFF, Roles.STUDENT]):
             raise serializers.ValidationError("Not allowed to assign roles")
         return value
     

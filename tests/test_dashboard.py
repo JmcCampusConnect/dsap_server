@@ -106,7 +106,6 @@ class DashboardAPITestCase(TestCase):
         ):
             self.assertTrue(has_menu_access(role_name, "dashboard"))
         self.assertFalse(has_menu_access(Roles.STUDENT, "dashboard"))
-        self.assertFalse(has_menu_access(Roles.SUBJECT_TEACHING_STAFF, "dashboard"))
 
         response = self.client.get("/api/dashboard/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -116,13 +115,11 @@ class DashboardAPITestCase(TestCase):
         response = self.client.get("/api/dashboard/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        teaching_role, _ = Role.objects.get_or_create(
-            name=Roles.SUBJECT_TEACHING_STAFF
+        unsupported_role = Role.objects.create(name="UNSUPPORTED_LEGACY_ROLE")
+        unsupported_user = self.create_user(
+            "dashboard-unsupported", unsupported_role, self.department
         )
-        teaching_user = self.create_user(
-            "dashboard-teaching", teaching_role, self.department
-        )
-        self.client.force_authenticate(user=teaching_user)
+        self.client.force_authenticate(user=unsupported_user)
         response = self.client.get("/api/dashboard/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 

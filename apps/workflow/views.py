@@ -208,7 +208,7 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
         """
         if service_id:
             self._get_and_authorize_service(service_id, require_write=False)
-        roles = Role.objects.all().order_by("name")
+        roles = Role.objects.filter(name__in=Roles.all()).order_by("name")
         role_options = [
             {
                 "value": str(r.id),

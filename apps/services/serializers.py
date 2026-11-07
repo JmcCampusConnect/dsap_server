@@ -5,6 +5,7 @@ from apps.departments.models import ServiceDepartment
 from apps.workflow.models import WorkflowStep
 from apps.workflow.serializers import WorkflowStepSerializer
 from apps.accounts.models import Role
+from apps.accounts.role_constants import Roles
 from apps.workflow.constants import ActionTypes, AllowedActions
 from apps.audit.models import AuditLog
 
@@ -268,8 +269,21 @@ class ServiceSerializer(serializers.ModelSerializer):
                 except Role.DoesNotExist:
                     role_obj = None
 
+                if role_obj is None or role_obj.name not in Roles.all():
+                    raise serializers.ValidationError(
+                        {"workflow_steps": "Select a supported role for each workflow step."}
+                    )
+
             if not role_obj:
-                role_obj = Role.objects.exclude(name="STUDENT").first() or Role.objects.first()
+                role_obj = (
+                    Role.objects.filter(name__in=Roles.all())
+                    .exclude(name=Roles.STUDENT)
+                    .first()
+                )
+                if role_obj is None:
+                    raise serializers.ValidationError(
+                        {"workflow_steps": "No supported role is available for workflow steps."}
+                    )
 
             action_type = (item.get("action_type") or "APPROVAL").strip().upper()
             if action_type not in ActionTypes.all():

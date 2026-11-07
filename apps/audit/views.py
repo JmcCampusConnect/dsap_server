@@ -1,14 +1,16 @@
 from django.db import models
 from django.http import HttpResponse
 from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from openpyxl import Workbook
+from apps.accounts.permissions import IsSystemAdmin
 from common.pagination import StandardPagination
 from .models import AuditLog
 
 
 class AuditLogListView(ListAPIView):
-    
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
     queryset = AuditLog.objects.all()
     pagination_class = StandardPagination
 
@@ -23,13 +25,13 @@ class AuditLogListView(ListAPIView):
         date_to = request.query_params.get("date_to")
         search = request.query_params.get("search")
 
-        if action:
+        if action and action.upper() != "ALL":
             queryset = queryset.filter(action=action)
 
-        if model_name:
+        if model_name and model_name.upper() != "ALL":
             queryset = queryset.filter(model_name=model_name)
 
-        if user_id:
+        if user_id and str(user_id).upper() != "ALL":
             queryset = queryset.filter(user_id=user_id)
 
         if date_from:
@@ -48,6 +50,27 @@ class AuditLogListView(ListAPIView):
 
         page = self.paginate_queryset(queryset)
 
+        if page is not None:
+            data = [
+                {
+                    "id": audit_log.id,
+                    "app_label": audit_log.app_label,
+                    "model_name": audit_log.model_name,
+                    "object_id": audit_log.object_id,
+                    "object_repr": audit_log.object_repr,
+                    "action": audit_log.action,
+                    "changes": audit_log.changes,
+                    "user_id": audit_log.user_id,
+                    "user_name": audit_log.user_name,
+                    "ip_address": audit_log.ip_address,
+                    "user_agent": audit_log.user_agent,
+                    "request_path": audit_log.request_path,
+                    "created_at": audit_log.created_at,
+                }
+                for audit_log in page
+            ]
+            return self.get_paginated_response(data)
+
         data = [
             {
                 "id": audit_log.id,
@@ -64,13 +87,14 @@ class AuditLogListView(ListAPIView):
                 "request_path": audit_log.request_path,
                 "created_at": audit_log.created_at,
             }
-            for audit_log in page
+            for audit_log in queryset
         ]
-
-        return self.get_paginated_response(data)
+        return Response(data)
 
 
 class AuditLogStatsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         total = AuditLog.objects.count()
 
@@ -80,6 +104,8 @@ class AuditLogStatsView(ListAPIView):
 
 
 class AuditLogActionsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         actions = [
             {
@@ -93,6 +119,8 @@ class AuditLogActionsView(ListAPIView):
 
 
 class AuditLogModelsView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
     def get(self, request, *args, **kwargs):
         models = (
             AuditLog.objects
@@ -107,6 +135,7 @@ class AuditLogModelsView(ListAPIView):
 
 
 class AuditLogExportView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
 
     def get(self, request, *args, **kwargs):
         queryset = AuditLog.objects.all()
@@ -117,13 +146,13 @@ class AuditLogExportView(ListAPIView):
         date_to = request.query_params.get("date_to")
         search = request.query_params.get("search")
 
-        if action:
+        if action and action.upper() != "ALL":
             queryset = queryset.filter(action=action)
 
-        if model_name:
+        if model_name and model_name.upper() != "ALL":
             queryset = queryset.filter(model_name=model_name)
 
-        if user_id:
+        if user_id and str(user_id).upper() != "ALL":
             queryset = queryset.filter(user_id=user_id)
 
         if date_from:
@@ -176,7 +205,7 @@ class AuditLogExportView(ListAPIView):
                 audit_log.ip_address,
                 audit_log.user_agent,
                 audit_log.request_path,
-                audit_log.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                audit_log.created_at.strftime("%Y-%m-%d %H:%M:%S") if audit_log.created_at else "",
             ])
 
         response = HttpResponse(

@@ -1,8 +1,8 @@
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from rest_framework import serializers
-
 from apps.accounts.models import Role, User
+from apps.accounts.role_constants import Roles
 from apps.departments.models import AcademicDepartment
 
 from .models import Student
@@ -24,7 +24,7 @@ class StudentSerializer(serializers.ModelSerializer):
     academic_department_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=False, allow_null=True, write_only=True)
     role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(),
+        queryset=Role.objects.filter(name=Roles.STUDENT),
         required=False,
         allow_null=True,
         write_only=True,
