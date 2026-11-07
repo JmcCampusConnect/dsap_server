@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import models, transaction
+from django.db.models import Count
 from apps.services.models import Service, ServiceField, ServiceDocument
 from apps.departments.models import ServiceDepartment
 from apps.workflow.models import WorkflowStep
@@ -402,6 +403,13 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             "responsible_role_id",
         ]
 
+class ServiceDirectoryServiceSerializer(ServiceSerializer):
+    document_count = serializers.IntegerField(read_only=True)
+
+    class Meta(ServiceSerializer.Meta):
+        fields = ServiceSerializer.Meta.fields + ['document_count']
+
+
 class ServiceDirectoryDepartmentSerializer(serializers.ModelSerializer):
     """Department with a list of enabled services."""
     services = serializers.SerializerMethodField()
@@ -411,8 +419,10 @@ class ServiceDirectoryDepartmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'name', 'services']
 
     def get_services(self, obj):
-        enabled_services = obj.service_set.filter(status=True).order_by('name')
-        return ServiceSerializer(enabled_services, many=True).data
+        enabled_services = obj.service_set.filter(status=True).annotate(
+            document_count=Count('servicedocument')
+        ).order_by('name')
+        return ServiceDirectoryServiceSerializer(enabled_services, many=True).data
 
 
 class ServiceDetailSerializer(ServiceSerializer):

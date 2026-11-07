@@ -25,6 +25,7 @@ from apps.services.serializers import (
     ServiceDocumentSerializer,
     ServiceDetailSerializer,
     ServiceDirectoryDepartmentSerializer,
+    ServiceDirectoryServiceSerializer,
     ServiceDepartmentWithCountSerializer,
 )
 from common.pagination import StandardPagination
@@ -631,7 +632,9 @@ class ServiceDirectoryViewSet(GenericViewSet):
     serializer_class = ServiceSerializer
 
     def get_queryset(self):
-        return Service.objects.filter(status=True).select_related('service_department_id')
+        return Service.objects.filter(status=True).select_related(
+            'service_department_id'
+        ).annotate(document_count=Count('servicedocument'))
 
     @action(detail=False, methods=['get'], url_path='')
     def list_directory(self, request):
@@ -686,7 +689,7 @@ class ServiceDirectoryViewSet(GenericViewSet):
         if hasattr(Service, 'description'):
             q_objects |= Q(description__icontains=query)
         services = services.filter(q_objects).order_by('name')
-        serializer = ServiceSerializer(services, many=True)
+        serializer = ServiceDirectoryServiceSerializer(services, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='filter')
@@ -708,5 +711,5 @@ class ServiceDirectoryViewSet(GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         services = self.get_queryset().filter(service_department_id=dept_id).order_by('name')
-        serializer = ServiceSerializer(services, many=True)
+        serializer = ServiceDirectoryServiceSerializer(services, many=True)
         return Response(serializer.data)

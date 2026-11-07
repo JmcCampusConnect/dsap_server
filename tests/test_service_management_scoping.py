@@ -504,3 +504,30 @@ class ScopeBasedServiceManagementTests(TestCase):
             'allowed_actions': ['APPROVE'],
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_service_directory_endpoints_return_document_counts(self):
+        directory_res = self.client.get('/api/services/service-directory/')
+        self.assertEqual(directory_res.status_code, status.HTTP_200_OK)
+        department = next(
+            department for department in directory_res.data
+            if department['id'] == self.dept_a.id
+        )
+        service = next(
+            service for service in department['services']
+            if service['id'] == self.srv_a1.id
+        )
+        self.assertEqual(service['document_count'], 1)
+
+        search_res = self.client.get('/api/services/service-directory/search/?q=Service%20A1')
+        self.assertEqual(search_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_res.data[0]['document_count'], 1)
+
+        filter_res = self.client.get(
+            f'/api/services/service-directory/filter/?department={self.dept_a.id}'
+        )
+        self.assertEqual(filter_res.status_code, status.HTTP_200_OK)
+        filtered_service = next(
+            service for service in filter_res.data
+            if service['id'] == self.srv_a1.id
+        )
+        self.assertEqual(filtered_service['document_count'], 1)
