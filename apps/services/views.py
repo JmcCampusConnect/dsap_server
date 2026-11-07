@@ -238,6 +238,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             {
                 "value": str(r.id),
                 "label": r.name,
+                "name": r.name,
                 "description": r.description,
             }
             for r in roles

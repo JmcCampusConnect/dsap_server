@@ -7,7 +7,7 @@ from apps.workflow.models import WorkflowStep
 from apps.workflow.serializers import WorkflowStepSerializer
 from apps.accounts.models import Role
 from apps.accounts.role_constants import Roles
-from apps.workflow.constants import ActionTypes, AllowedActions
+from apps.workflow.constants import ActionTypes, AllowedActions, configure_role_action
 from apps.audit.models import AuditLog
 
 
@@ -286,18 +286,24 @@ class ServiceSerializer(serializers.ModelSerializer):
                         {"workflow_steps": "No supported role is available for workflow steps."}
                     )
 
-            action_type = (item.get("action_type") or "APPROVAL").strip().upper()
+            action_type = (item.get("action_type") or "REVIEW").strip().upper()
             if action_type not in ActionTypes.all():
-                action_type = ActionTypes.APPROVAL
+                action_type = ActionTypes.REVIEW
 
             raw_actions = item.get("allowed_actions")
             if raw_actions is None or not isinstance(raw_actions, list):
-                allowed_actions = [AllowedActions.APPROVE, AllowedActions.REJECT]
+                allowed_actions = []
             else:
                 allowed_actions = [
                     a.strip().upper() for a in raw_actions
                     if isinstance(a, str) and a.strip().upper() in AllowedActions.all()
                 ]
+            allowed_actions = configure_role_action(
+                role_obj.name,
+                allowed_actions,
+                step_name=step_name,
+                step_order=index + 1,
+            )
 
             step_order = index + 1
 
@@ -399,6 +405,7 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             "step_name",
             "action_type",
             "responsible_role_id",
+            "allowed_actions",
         ]
 
 class ServiceDirectoryServiceSerializer(ServiceSerializer):

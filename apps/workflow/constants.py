@@ -4,7 +4,6 @@ Single Source of Truth for action types and workflow allowed actions.
 """
 
 class ActionTypes:
-    APPROVAL = "APPROVAL"
     REVIEW = "REVIEW"
     PROCESSING = "PROCESSING"
     VERIFICATION = "VERIFICATION"
@@ -13,7 +12,6 @@ class ActionTypes:
     @classmethod
     def all(cls):
         return [
-            cls.APPROVAL,
             cls.REVIEW,
             cls.PROCESSING,
             cls.VERIFICATION,
@@ -22,7 +20,6 @@ class ActionTypes:
 
 
 ACTION_TYPE_CHOICES = [
-    (ActionTypes.APPROVAL, "Approval"),
     (ActionTypes.REVIEW, "Review"),
     (ActionTypes.PROCESSING, "Processing"),
     (ActionTypes.VERIFICATION, "Verification"),
@@ -31,41 +28,59 @@ ACTION_TYPE_CHOICES = [
 
 
 class AllowedActions:
-    APPROVE = "APPROVE"
     REJECT = "REJECT"
     RETURN = "RETURN"
     FORWARD = "FORWARD"
-    HOLD = "HOLD"
     COMPLETE = "COMPLETE"
+    ISSUE = "ISSUE"
 
     @classmethod
     def all(cls):
         return [
-            cls.APPROVE,
             cls.REJECT,
             cls.RETURN,
             cls.FORWARD,
-            cls.HOLD,
             cls.COMPLETE,
+            cls.ISSUE,
         ]
 
 
 ALLOWED_ACTION_CHOICES = [
-    (AllowedActions.APPROVE, "Approve"),
     (AllowedActions.REJECT, "Reject"),
     (AllowedActions.RETURN, "Return for Revision"),
     (AllowedActions.FORWARD, "Forward to Next Step"),
-    (AllowedActions.HOLD, "Put on Hold"),
     (AllowedActions.COMPLETE, "Mark as Completed"),
+    (AllowedActions.ISSUE, "Issue"),
 ]
+
+
+def configure_role_action(role_name, actions, step_name=None, step_order=None):
+    """Keep valid actions and enforce the fixed completion and issuance stages."""
+    valid_actions = []
+    for action in actions or []:
+        if action in AllowedActions.all() and action not in valid_actions:
+            valid_actions.append(action)
+
+    if step_order == 4:
+        return [AllowedActions.ISSUE]
+    valid_actions = [action for action in valid_actions if action != AllowedActions.ISSUE]
+
+    required_action = (
+        AllowedActions.COMPLETE
+        if step_order == 3 or step_name == "Service Completion"
+        else AllowedActions.FORWARD if role_name == "SERVICE_DEPT_STAFF" else None
+    )
+    if required_action and required_action not in valid_actions:
+        valid_actions.append(required_action)
+    return valid_actions
 
 
 class RequestStatuses:
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
     UNDER_VERIFICATION = "UNDER_VERIFICATION"
-    APPROVED = "APPROVED"
     COMPLETED = "COMPLETED"
+    ISSUED = "ISSUED"
     REJECTED = "REJECTED"
     RETURNED = "RETURNED"
 
@@ -73,8 +88,8 @@ class RequestStatuses:
 class NotificationEventCodes:
     REQ_SUBMITTED = "REQ_SUBMITTED"
     REQ_UNDER_VERIFICATION = "REQ_UNDER_VERIFICATION"
-    REQ_APPROVED = "REQ_APPROVED"
     REQ_COMPLETED = "REQ_COMPLETED"
+    REQ_ISSUED = "REQ_ISSUED"
     REQ_RETURNED = "REQ_RETURNED"
     REQ_REJECTED = "REQ_REJECTED"
     REQ_FORWARDED = "REQ_FORWARDED"
@@ -83,7 +98,7 @@ class NotificationEventCodes:
     ACTION_EVENT_MAP = {
         AllowedActions.FORWARD: "REQ_UNDER_VERIFICATION",
         AllowedActions.RETURN: "REQ_RETURNED",
-        AllowedActions.APPROVE: "REQ_APPROVED",
         AllowedActions.REJECT: "REQ_REJECTED",
         AllowedActions.COMPLETE: "REQ_COMPLETED",
+        AllowedActions.ISSUE: "REQ_ISSUED",
     }

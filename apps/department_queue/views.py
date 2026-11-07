@@ -9,9 +9,9 @@ Endpoint summary:
   PATCH  /api/department-queue/{id}/documents/{doc_id}/ Verify / reject a document
   POST   /api/department-queue/{id}/forward/            Forward to next workflow step
   POST   /api/department-queue/{id}/return/             Return to student for correction
-  POST   /api/department-queue/{id}/approve/            Final approval
   POST   /api/department-queue/{id}/reject/             Reject the request
-  POST   /api/department-queue/{id}/complete/           Mark as completed/issued
+  POST   /api/department-queue/{id}/complete/           Advance from completion to issuance
+  POST   /api/department-queue/{id}/issue/              Issue the completed request
   GET    /api/department-queue/{id}/history/            Chronological workflow history
   GET    /api/department-queue/{id}/documents/{doc_id}/view/
   GET    /api/department-queue/{id}/documents/{doc_id}/download/
@@ -69,18 +69,18 @@ _TRANSITION_RULES = {
     # action           : set of request statuses from which the action is valid
     AllowedActions.FORWARD:  {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
     AllowedActions.RETURN:   {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
-    AllowedActions.APPROVE:  {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION, RequestStatuses.APPROVED},
     AllowedActions.REJECT:   {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
-    AllowedActions.COMPLETE: {RequestStatuses.APPROVED},
+    AllowedActions.COMPLETE: {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
+    AllowedActions.ISSUE: {RequestStatuses.COMPLETED},
 }
 
 # Status that each action produces
 _ACTION_TO_STATUS = {
     AllowedActions.FORWARD:  RequestStatuses.UNDER_VERIFICATION,
     AllowedActions.RETURN:   RequestStatuses.RETURNED,
-    AllowedActions.APPROVE:  RequestStatuses.APPROVED,
     AllowedActions.REJECT:   RequestStatuses.REJECTED,
     AllowedActions.COMPLETE: RequestStatuses.COMPLETED,
+    AllowedActions.ISSUE: RequestStatuses.ISSUED,
 }
 
 
@@ -251,15 +251,7 @@ class DeptQueueViewSet(GenericViewSet):
             })
 
         # 3. Allowed-actions check on the step
-        if action_code == AllowedActions.FORWARD:
-            step_allows = (
-                AllowedActions.FORWARD in step.allowed_actions
-                or AllowedActions.APPROVE in step.allowed_actions
-            )
-        elif action_code == AllowedActions.COMPLETE:
-            step_allows = True
-        else:
-            step_allows = action_code in step.allowed_actions
+        step_allows = action_code in step.allowed_actions
 
         if not step_allows:
             raise ValidationError({
@@ -269,14 +261,6 @@ class DeptQueueViewSet(GenericViewSet):
                     f"Allowed: {step.allowed_actions}."
                 )
             })
-
-    def _assert_admin_action(self, action_label):
-        """Raise PermissionDenied if the user is not a dept admin or system admin."""
-        user = self.request.user
-        if not user.has_any_role([Roles.SERVICE_DEPT_ADMIN, Roles.SYSTEM_ADMIN]):
-            raise PermissionDenied(
-                f"Only SERVICE_DEPT_ADMIN or SYSTEM_ADMIN can perform '{action_label}'."
-            )
 
     def _record_history(self, request_obj, step, action_code, remarks):
         """Create a WorkflowHistory record for the current transition."""
@@ -481,7 +465,7 @@ class DeptQueueViewSet(GenericViewSet):
 
         if not next_step:
             raise ValidationError({
-                'detail': 'No next workflow step found. Use approve or complete instead.'
+                'detail': 'No next workflow step is configured.'
             })
 
         serializer = WorkflowActionSerializer(data=request.data)
@@ -532,42 +516,14 @@ class DeptQueueViewSet(GenericViewSet):
         )
 
     # ------------------------------------------------------------------
-    # POST /api/department-queue/{id}/approve/
-    # ------------------------------------------------------------------
-
-    @action(detail=True, methods=['post'], url_path='approve')
-    def approve(self, request, pk=None):
-        """Final approval. Restricted to SERVICE_DEPT_ADMIN and SYSTEM_ADMIN."""
-        request_obj = self._get_request_or_403(pk)
-        self._assert_admin_action('approve')
-        self._assert_step_permission(request_obj, AllowedActions.APPROVE)
-
-        serializer = WorkflowActionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        remarks = serializer.validated_data.get('remarks', '')
-
-        current_step = request_obj.current_step_id
-
-        with transaction.atomic():
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.APPROVE]
-            request_obj.save(update_fields=['current_status', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.APPROVE, remarks)
-            send_workflow_notification(request_obj, AllowedActions.APPROVE)
-
-        return Response(
-            DeptQueueDetailSerializer(request_obj).data,
-            status=status.HTTP_200_OK,
-        )
-
     # ------------------------------------------------------------------
     # POST /api/department-queue/{id}/reject/
     # ------------------------------------------------------------------
 
     @action(detail=True, methods=['post'], url_path='reject')
     def reject(self, request, pk=None):
-        """Reject the request. Restricted to SERVICE_DEPT_ADMIN and SYSTEM_ADMIN. Remarks required."""
+        """Reject the request from an authorized workflow step. Remarks required."""
         request_obj = self._get_request_or_403(pk)
-        self._assert_admin_action('reject')
         self._assert_step_permission(request_obj, AllowedActions.REJECT)
 
         serializer = WorkflowActionSerializer(data=request.data)
@@ -597,30 +553,58 @@ class DeptQueueViewSet(GenericViewSet):
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete(self, request, pk=None):
-        """Mark as completed/issued. Restricted to SERVICE_DEPT_ADMIN and SYSTEM_ADMIN."""
+        """Mark the current stage complete and advance to the next workflow step."""
         request_obj = self._get_request_or_403(pk)
-        self._assert_admin_action('complete')
-
-        if request_obj.current_status != RequestStatuses.APPROVED:
-            raise ValidationError({
-                'detail': (
-                    f"Only APPROVED requests can be completed. "
-                    f"Current status: '{request_obj.current_status}'."
-                )
-            })
+        self._assert_step_permission(request_obj, AllowedActions.COMPLETE)
 
         serializer = WorkflowActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         remarks = serializer.validated_data.get('remarks', '')
 
         current_step = request_obj.current_step_id
+        next_step = (
+            WorkflowStep.objects
+            .filter(
+                service_id=request_obj.service_id,
+                step_order__gt=current_step.step_order,
+            )
+            .order_by('step_order')
+            .first()
+        )
+        if not next_step:
+            raise ValidationError({
+                'detail': 'No next workflow step is configured after this completion step.'
+            })
 
         with transaction.atomic():
+            request_obj.current_step_id = next_step
             request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.COMPLETE]
-            request_obj.completed_at = timezone.now()
-            request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
+            request_obj.save(update_fields=['current_step_id', 'current_status', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.COMPLETE, remarks)
             send_workflow_notification(request_obj, AllowedActions.COMPLETE)
+
+        return Response(
+            DeptQueueDetailSerializer(request_obj).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'], url_path='issue')
+    def issue(self, request, pk=None):
+        """Issue the request from its configured final workflow step."""
+        request_obj = self._get_request_or_403(pk)
+        self._assert_step_permission(request_obj, AllowedActions.ISSUE)
+
+        serializer = WorkflowActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        remarks = serializer.validated_data.get('remarks', '')
+        current_step = request_obj.current_step_id
+
+        with transaction.atomic():
+            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.ISSUE]
+            request_obj.completed_at = timezone.now()
+            request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
+            self._record_history(request_obj, current_step, AllowedActions.ISSUE, remarks)
+            send_workflow_notification(request_obj, AllowedActions.ISSUE)
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,

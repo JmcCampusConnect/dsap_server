@@ -92,8 +92,8 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
                     'DRAFT': 0,
                     'SUBMITTED': 0,
                     'UNDER_VERIFICATION': 0,
-                    'APPROVED': 0,
                     'COMPLETED': 0,
+                    'ISSUED': 0,
                     'REJECTED': 0,
                     'RETURNED': 0,
                 }
@@ -109,8 +109,8 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
             'DRAFT': 0,
             'SUBMITTED': 0,
             'UNDER_VERIFICATION': 0,
-            'APPROVED': 0,
             'COMPLETED': 0,
+            'ISSUED': 0,
             'REJECTED': 0,
             'RETURNED': 0,
         }

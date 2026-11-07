@@ -37,7 +37,6 @@ def run() -> dict[str, Any]:
         return {"created": 0, "existing": 0, "skipped": True}
 
     coe_staff = User.objects.filter(username="COE_STAFF").first() or User.objects.filter(role_id__name="SERVICE_DEPT_STAFF").first()
-    coe_admin = User.objects.filter(username="COE_ADMIN").first() or User.objects.filter(role_id__name="SERVICE_DEPT_ADMIN").first()
 
     # 2. Fetch services
     services = {s.code: s for s in Service.objects.all()}
@@ -64,10 +63,10 @@ def run() -> dict[str, Any]:
         channel="EMAIL",
         defaults={"template_body": "Your request {request_number} is under verification."}
     )
-    template_approved, _ = NotificationTemplate.objects.get_or_create(
-        event_code="REQ_APPROVED",
+    template_issued, _ = NotificationTemplate.objects.get_or_create(
+        event_code="REQ_ISSUED",
         channel="EMAIL",
-        defaults={"template_body": "Your request {request_number} has been approved."}
+        defaults={"template_body": "Your request {request_number} has been issued."}
     )
     template_completed, _ = NotificationTemplate.objects.get_or_create(
         event_code="REQ_COMPLETED",
@@ -117,13 +116,13 @@ def run() -> dict[str, Any]:
                 (template_verified, create_dt(2026, 8, 29, 11, 1)),
             ],
         },
-        # 2. APPROVED
+        # 2. COMPLETED, awaiting document issuance
         {
             "request_number": "REQ-2026-0002",
             "student": student_66,
             "service_code": "COE-004",
-            "status": "APPROVED",
-            "step_order": 3,
+            "status": "COMPLETED",
+            "step_order": 4,
             "submitted_at": create_dt(2026, 8, 20, 14, 20),
             "completed_at": None,
             "field_values": {
@@ -137,11 +136,10 @@ def run() -> dict[str, Any]:
                 ("Request Submitted", "Pass certificate request submitted", create_dt(2026, 8, 20, 14, 20), student_66.user_id, 1),
                 ("Eligibility & Dues Verified", "Verified academic records and no-dues status with department", create_dt(2026, 8, 22, 11, 0), coe_staff or student_66.user_id, 1),
                 ("Pass Certificate Prepared", "Pass certificate compiled and verified against master register", create_dt(2026, 8, 22, 16, 30), coe_staff or student_66.user_id, 2),
-                ("Approved", "Final approval granted by Controller of Examinations", create_dt(2026, 8, 23, 9, 30), coe_admin or student_66.user_id, 3),
+                ("Complete", "Request processing completed and moved to document issuance", create_dt(2026, 8, 23, 9, 30), coe_staff or student_66.user_id, 3),
             ],
             "notifications": [
                 (template_submitted, create_dt(2026, 8, 20, 14, 21)),
-                (template_approved, create_dt(2026, 8, 23, 9, 32)),
             ],
         },
         # 3. SUBMITTED
@@ -198,13 +196,13 @@ def run() -> dict[str, Any]:
                 (template_returned, create_dt(2026, 8, 27, 10, 1)),
             ],
         },
-        # 5. COMPLETED
+        # 5. ISSUED
         {
             "request_number": "REQ-2026-0005",
             "student": student_66,
             "service_code": "COE-002",
-            "status": "COMPLETED",
-            "step_order": 3,
+            "status": "ISSUED",
+            "step_order": 4,
             "submitted_at": create_dt(2026, 8, 10, 9, 0),
             "completed_at": create_dt(2026, 8, 13, 11, 30),
             "field_values": {
@@ -221,13 +219,12 @@ def run() -> dict[str, Any]:
                 ("Request Submitted", "Transcript request submitted", create_dt(2026, 8, 10, 9, 0), student_66.user_id, 1),
                 ("Verification Completed", "All transcripts and identity verified", create_dt(2026, 8, 11, 14, 0), coe_staff or student_66.user_id, 1),
                 ("Transcript Printed & Sealed", "Transcript certificate set prepared and stamped", create_dt(2026, 8, 12, 16, 30), coe_staff or student_66.user_id, 2),
-                ("Approved", "Attested by Controller of Examinations", create_dt(2026, 8, 13, 10, 0), coe_admin or student_66.user_id, 3),
-                ("Completed", "Certificate delivered to student at counter. Request closed.", create_dt(2026, 8, 13, 11, 30), coe_admin or student_66.user_id, 3),
+                ("Complete", "Request processing completed before issuing the certificate.", create_dt(2026, 8, 13, 10, 0), coe_staff or student_66.user_id, 3),
+                ("Issue", "Certificate delivered to student at counter. Request closed.", create_dt(2026, 8, 13, 11, 30), coe_staff or student_66.user_id, 4),
             ],
             "notifications": [
                 (template_submitted, create_dt(2026, 8, 10, 9, 1)),
-                (template_approved, create_dt(2026, 8, 13, 10, 1)),
-                (template_completed, create_dt(2026, 8, 13, 11, 31)),
+                (template_issued, create_dt(2026, 8, 13, 11, 31)),
             ],
         },
         # 6. DRAFT

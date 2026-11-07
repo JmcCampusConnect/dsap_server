@@ -42,8 +42,14 @@ class SupportedRoleTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         role_names = {role["label"] for role in response.data["roles"]}
-
         self.assertEqual(role_names, set(Roles.all()))
+        action_codes = {
+            action["value"] for action in response.data["allowed_actions"]
+        }
+        self.assertNotIn("HOLD", action_codes)
+        self.assertIn("FORWARD", action_codes)
+        self.assertNotIn("APPROVE", action_codes)
+        self.assertIn("ISSUE", action_codes)
 
     def test_workflow_options_only_offer_supported_roles(self):
         request = APIRequestFactory().get("/api/services/workflow-steps/options/")

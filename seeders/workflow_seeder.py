@@ -18,167 +18,52 @@ except Exception as exc:
     print(f"Models could not be imported: {exc}")
 
 
+DEFAULT_WORKFLOW_STEPS = [
+    {
+        "step_order": 1,
+        "step_name": "Document & Record Verification",
+        "responsible_role": "SERVICE_DEPT_STAFF",
+        "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
+        "allowed_actions": [
+            AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
+            AllowedActions.RETURN if HAS_MODELS else "RETURN",
+            AllowedActions.REJECT if HAS_MODELS else "REJECT",
+        ],
+    },
+    {
+        "step_order": 2,
+        "step_name": "Service Processing & Preparation",
+        "responsible_role": "SERVICE_DEPT_STAFF",
+        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
+        "allowed_actions": [
+            AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
+            AllowedActions.RETURN if HAS_MODELS else "RETURN",
+        ],
+    },
+    {
+        "step_order": 3,
+        "step_name": "Service Completion",
+        "responsible_role": "SERVICE_DEPT_STAFF",
+        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
+        "allowed_actions": [AllowedActions.COMPLETE if HAS_MODELS else "COMPLETE"],
+    },
+    {
+        "step_order": 4,
+        "step_name": "Document Issuance & Delivery",
+        "responsible_role": "SERVICE_DEPT_STAFF",
+        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
+        "allowed_actions": [AllowedActions.ISSUE if HAS_MODELS else "ISSUE"],
+    },
+]
+
 SERVICE_WORKFLOWS = {
-    "COE-001": [
-        {
-            "step_order": 1,
-            "step_name": "Document & Fee Verification",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
-            "step_name": "COE Admin Final Approval",
-            "responsible_role": "SERVICE_DEPT_ADMIN",
-            "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-            ],
-        },
-    ],
-    "COE-002": [
-        {
-            "step_order": 1,
-            "step_name": "Document & Record Verification",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
-            "step_name": "Transcript Preparation & Sealing",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
-            "allowed_actions": [
-                AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 3,
-            "step_name": "COE Attestation & Approval",
-            "responsible_role": "SERVICE_DEPT_ADMIN",
-            "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-            ],
-        },
-    ],
-    "COE-003": [
-        {
-            "step_order": 1,
-            "step_name": "Academic Record & Document Verification",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
-            "step_name": "Statement Compilation & Printing",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
-            "allowed_actions": [
-                AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 3,
-            "step_name": "COE Admin Final Approval",
-            "responsible_role": "SERVICE_DEPT_ADMIN",
-            "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-            ],
-        },
-    ],
-    "COE-004": [
-        {
-            "step_order": 1,
-            "step_name": "Eligibility & Dues Verification",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
-            "step_name": "Pass Certificate Preparation",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
-            "allowed_actions": [
-                AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 3,
-            "step_name": "COE Admin Approval & Seal",
-            "responsible_role": "SERVICE_DEPT_ADMIN",
-            "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-            ],
-        },
-    ],
-    "COE-005": [
-        {
-            "step_order": 1,
-            "step_name": "Proof Document & Record Verification",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
-            "step_name": "ERP Record Update & Statement Re-issue",
-            "responsible_role": "SERVICE_DEPT_STAFF",
-            "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
-            "allowed_actions": [
-                AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 3,
-            "step_name": "COE Admin Final Approval",
-            "responsible_role": "SERVICE_DEPT_ADMIN",
-            "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-            ],
-        },
-    ],
+    code: DEFAULT_WORKFLOW_STEPS
+    for code in ("COE-001", "COE-002", "COE-003", "COE-004", "COE-005")
 }
 
 
 def run() -> dict[str, Any]:
-    """Seed multi-step workflow configuration for the 5 COE services."""
+    """Seed the default four-step workflow for the five COE services."""
     if not HAS_MODELS:
         return {"created": 0, "existing": 0, "skipped": True}
 

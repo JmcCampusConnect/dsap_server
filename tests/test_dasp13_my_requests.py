@@ -38,8 +38,8 @@ class MyRequestsEndpointTestCase(TestCase):
         self.assertEqual(response.data["DRAFT"], 1)
         self.assertEqual(response.data["SUBMITTED"], 1)
         self.assertEqual(response.data["UNDER_VERIFICATION"], 1)
-        self.assertEqual(response.data["APPROVED"], 1)
         self.assertEqual(response.data["COMPLETED"], 1)
+        self.assertEqual(response.data["ISSUED"], 1)
         self.assertEqual(response.data["REJECTED"], 1)
         self.assertEqual(response.data["RETURNED"], 1)
 

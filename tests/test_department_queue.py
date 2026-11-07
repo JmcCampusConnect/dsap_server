@@ -89,12 +89,12 @@ class DepartmentQueueTestCase(TestCase):
     # 4. Users cannot act on workflow steps they are not authorized to handle
     # ----------------------------------------------------------------------
     def test_04_users_cannot_act_on_unauthorized_workflow_steps(self):
-        # REQ-2026-0002 is at Step 3 (responsible role: SERVICE_DEPT_ADMIN)
-        req_admin_step = Request.objects.get(request_number="REQ-2026-0002")
+        # REQ-2026-0002 is at Step 4 (responsible role: SERVICE_DEPT_STAFF)
+        req_issuance_step = Request.objects.get(request_number="REQ-2026-0002")
         self.client.force_authenticate(user=self.coe_staff)
         # Staff attempting forward on admin step
         res = self.client.post(
-            f"/api/department-queue/{req_admin_step.id}/forward/",
+            f"/api/department-queue/{req_issuance_step.id}/issue/",
             data={"remarks": "Staff trying to forward admin step"},
             format="json",
             HTTP_HOST="localhost",
@@ -113,58 +113,82 @@ class DepartmentQueueTestCase(TestCase):
         self.assertEqual(res_admin.status_code, status.HTTP_403_FORBIDDEN)
 
     # ----------------------------------------------------------------------
-    # 5. Staff cannot final approve, reject requests, or mark requests completed
+    # 5. Approval is removed and completion must be allowed by the step
     # ----------------------------------------------------------------------
-    def test_05_staff_cannot_final_approve_reject_or_complete(self):
+    def test_05_approval_is_removed_and_disallowed_completion_is_rejected(self):
         req = Request.objects.get(request_number="REQ-2026-0001")
         self.client.force_authenticate(user=self.coe_staff)
 
-        # Staff trying to approve
-        res_app = self.client.post(
+        res_approve = self.client.post(
             f"/api/department-queue/{req.id}/approve/",
-            data={"remarks": "Staff approve"},
+            data={"remarks": "Approval is no longer available"},
             format="json",
             HTTP_HOST="localhost",
         )
-        self.assertEqual(res_app.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res_approve.status_code, status.HTTP_404_NOT_FOUND)
 
-        # Staff trying to reject
-        res_rej = self.client.post(
-            f"/api/department-queue/{req.id}/reject/",
-            data={"remarks": "Staff reject"},
-            format="json",
-            HTTP_HOST="localhost",
-        )
-        self.assertEqual(res_rej.status_code, status.HTTP_403_FORBIDDEN)
-
-        # Staff trying to complete
         res_comp = self.client.post(
             f"/api/department-queue/{req.id}/complete/",
-            data={"remarks": "Staff complete"},
+            data={"remarks": "Complete is not allowed at step 1"},
             format="json",
             HTTP_HOST="localhost",
         )
-        self.assertEqual(res_comp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res_comp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_staff_can_complete_request_when_current_step_allows_it(self):
+        req = Request.objects.get(request_number="REQ-2026-0001")
+        completion_step = WorkflowStep.objects.get(
+            service_id=req.service_id,
+            step_order=3,
+        )
+        issuance_step = WorkflowStep.objects.get(
+            service_id=req.service_id,
+            step_order=4,
+        )
+        req.current_step_id = completion_step
+        req.current_status = "UNDER_VERIFICATION"
+        req.save(update_fields=["current_step_id", "current_status", "updated_at"])
+        self.client.force_authenticate(user=self.coe_staff)
+
+        complete_response = self.client.post(
+            f"/api/department-queue/{req.id}/complete/",
+            data={"remarks": "Processing completed"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
+        req.refresh_from_db()
+        self.assertEqual(req.current_status, "COMPLETED")
+        self.assertEqual(req.current_step_id, issuance_step)
+        self.assertIsNone(req.completed_at)
+
+        issue_response = self.client.post(
+            f"/api/department-queue/{req.id}/issue/",
+            data={"remarks": "Issued to student"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(issue_response.status_code, status.HTTP_200_OK)
+        req.refresh_from_db()
+        self.assertEqual(req.current_status, "ISSUED")
+        self.assertIsNotNone(req.completed_at)
 
     # ----------------------------------------------------------------------
-    # 6. Authorized department admins can perform their permitted actions
+    # 6. Department admins cannot act on the staff issuance stage
     # ----------------------------------------------------------------------
-    def test_06_authorized_dept_admin_can_perform_permitted_actions(self):
-        # REQ-2026-0002 is APPROVED at step 3 (responsible role: SERVICE_DEPT_ADMIN)
+    def test_06_dept_admin_cannot_issue_at_staff_only_stage(self):
+        # REQ-2026-0002 is at the staff-only issuance step
         req = Request.objects.get(request_number="REQ-2026-0002")
         self.client.force_authenticate(user=self.coe_admin)
 
-        # Complete action
-        res_complete = self.client.post(
-            f"/api/department-queue/{req.id}/complete/",
+        res_issue = self.client.post(
+            f"/api/department-queue/{req.id}/issue/",
             data={"remarks": "Certificate collected and issued."},
             format="json",
             HTTP_HOST="localhost",
         )
-        self.assertEqual(res_complete.status_code, status.HTTP_200_OK)
-        req.refresh_from_db()
-        self.assertEqual(req.current_status, "COMPLETED")
-        self.assertIsNotNone(req.completed_at)
+        self.assertEqual(res_issue.status_code, status.HTTP_403_FORBIDDEN)
 
     # ----------------------------------------------------------------------
     # 7. Required documents must be verified before forwarding
@@ -210,19 +234,19 @@ class DepartmentQueueTestCase(TestCase):
     # 8. Invalid workflow transitions are rejected
     # ----------------------------------------------------------------------
     def test_08_invalid_workflow_transitions_rejected(self):
-        # REQ-2026-0005 is COMPLETED — no actions allowed from COMPLETED
+        # REQ-2026-0005 is ISSUED — no actions are allowed after issuance
         req = Request.objects.get(request_number="REQ-2026-0005")
-        self.client.force_authenticate(user=self.coe_admin)
+        self.client.force_authenticate(user=self.coe_staff)
 
         res = self.client.post(
-            f"/api/department-queue/{req.id}/approve/",
-            data={"remarks": "Trying to approve completed request"},
+            f"/api/department-queue/{req.id}/issue/",
+            data={"remarks": "Trying to issue an already issued request"},
             format="json",
             HTTP_HOST="localhost",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-        # Cannot complete a request that is not APPROVED
+        # Cannot complete a request that has not reached the completion step
         req_sub = Request.objects.get(request_number="REQ-2026-0003")
         res_comp = self.client.post(
             f"/api/department-queue/{req_sub.id}/complete/",

@@ -27,16 +27,16 @@ DASHBOARD_ROLES = (
 NON_DRAFT_STATUSES = (
     RequestStatuses.SUBMITTED,
     RequestStatuses.UNDER_VERIFICATION,
-    RequestStatuses.APPROVED,
     RequestStatuses.COMPLETED,
+    RequestStatuses.ISSUED,
     RequestStatuses.REJECTED,
     RequestStatuses.RETURNED,
 )
-TERMINAL_STATUSES = (RequestStatuses.COMPLETED, RequestStatuses.REJECTED)
+TERMINAL_STATUSES = (RequestStatuses.ISSUED, RequestStatuses.REJECTED)
 PENDING_STATUSES = (
     RequestStatuses.SUBMITTED,
     RequestStatuses.UNDER_VERIFICATION,
-    RequestStatuses.APPROVED,
+    RequestStatuses.COMPLETED,
     RequestStatuses.RETURNED,
 )
 
@@ -63,7 +63,7 @@ class DashboardView(APIView):
     Draft requests are excluded. Department admin counts include the current
     department's admin/staff workflow steps; staff counts include only steps
     routed to SERVICE_DEPT_STAFF. Open means any in-scope status except
-    COMPLETED and REJECTED. SLA uses submitted_at plus the service's elapsed
+    ISSUED and REJECTED. SLA uses submitted_at plus the service's elapsed
     24-hour SLA days. Monthly completion uses completed_at in the current local
     calendar month; revenue is successful payments paid in that month.
     """
@@ -180,7 +180,7 @@ class DashboardView(APIView):
                 due_today += 1
 
         completed_this_month = requests.filter(
-            current_status=RequestStatuses.COMPLETED,
+            current_status=RequestStatuses.ISSUED,
             completed_at__gte=month_start,
             completed_at__lte=now,
         ).count()
@@ -360,9 +360,8 @@ class DashboardView(APIView):
                 "department": user.service_department_id.name,
             }
 
-        awaiting_approval = requests.filter(
-            current_status__in=(RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION),
-            current_step_id__responsible_role_id__name=Roles.SERVICE_DEPT_ADMIN,
+        ready_for_issuance = requests.filter(
+            current_status=RequestStatuses.COMPLETED,
         ).count()
 
         return Response(
@@ -382,7 +381,7 @@ class DashboardView(APIView):
                             RequestStatuses.UNDER_VERIFICATION,
                         )
                     ).count(),
-                    "awaiting_approval": awaiting_approval,
+                    "ready_for_issuance": ready_for_issuance,
                     "completed_this_month": completed_this_month,
                     "sla_breaches": sla_breaches,
                     "due_today": due_today if role == Roles.SERVICE_DEPT_STAFF else None,

@@ -323,7 +323,7 @@ class DocumentVerifySerializer(serializers.Serializer):
 
 
 class WorkflowActionSerializer(serializers.Serializer):
-    """Generic input for workflow transition actions (forward/return/approve/reject/complete)."""
+    """Generic input for workflow transition actions."""
 
     remarks = serializers.CharField(
         required=False, allow_blank=True, allow_null=True

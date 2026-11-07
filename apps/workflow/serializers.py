@@ -2,7 +2,7 @@ from rest_framework import serializers
 from apps.workflow.models import WorkflowStep, WorkflowHistory
 from apps.accounts.models import Role
 from apps.accounts.role_constants import Roles
-from apps.workflow.constants import ActionTypes, AllowedActions
+from apps.workflow.constants import ActionTypes, AllowedActions, configure_role_action
 
 
 class RoleRefSerializer(serializers.ModelSerializer):
@@ -79,6 +79,32 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
                     f"Invalid action '{act}'. Allowed actions are: {valid_actions}"
                 )
         return normalized
+
+    def validate(self, attrs):
+        role = attrs.get(
+            "responsible_role_id",
+            self.instance.responsible_role_id if self.instance else None,
+        )
+        actions = attrs.get(
+            "allowed_actions",
+            self.instance.allowed_actions if self.instance else [],
+        )
+        if role:
+            step_order = attrs.get(
+                "step_order",
+                self.instance.step_order if self.instance else None,
+            )
+            step_name = attrs.get(
+                "step_name",
+                self.instance.step_name if self.instance else None,
+            )
+            attrs["allowed_actions"] = configure_role_action(
+                role.name,
+                actions,
+                step_name=step_name,
+                step_order=step_order,
+            )
+        return attrs
 
 
 class WorkflowHistorySerializer(serializers.ModelSerializer):

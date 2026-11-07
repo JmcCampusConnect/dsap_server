@@ -22,7 +22,7 @@ def send_workflow_notification(request_obj, action: str) -> None:
     """
     event_code = NotificationEventCodes.ACTION_EVENT_MAP.get(action)
     if not event_code:
-        return  # Some actions (e.g. HOLD) intentionally have no notification
+        return  # Actions without a notification mapping are intentionally silent.
 
     student_user = None
     try:

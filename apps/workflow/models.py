@@ -24,7 +24,7 @@ class WorkflowStep(models.Model):
     allowed_actions = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of allowed action codes for this step, e.g. ['APPROVE', 'REJECT', 'RETURN']"
+        help_text="List of allowed action codes for this step, e.g. ['FORWARD', 'RETURN', 'COMPLETE', 'ISSUE']"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
