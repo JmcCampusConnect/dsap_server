@@ -75,13 +75,7 @@ def run() -> dict[str, Any]:
             "service_department_code": "LIB",
         },
 
-        # ── Non-dept-scoped roles (unchanged) ──────────────────────────
-        {
-            "role": "SUBJECT_TEACHING_STAFF",
-            "username": "JMCMTS0006",
-            "email": "prof.saq@example.com",
-            "service_department_code": None,
-        },
+        # ── Students ──────────────────────────────────────────────────
         {
             "role": "STUDENT",
             "username": "24MCA057",

@@ -295,7 +295,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
         roles = {
             role.name: role
-            for role in User._meta.get_field("role_id").remote_field.model.objects.all()
+            for role in User._meta.get_field("role_id").remote_field.model.objects.filter(
+                name__in=Roles.all()
+            )
         }
 
         for row_idx, row in enumerate(rows[1:], start=2):

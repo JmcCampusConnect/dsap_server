@@ -4,7 +4,7 @@ from typing import Any
 from django.db import transaction
 
 try:
-    from apps.accounts.models import Role, User
+    from apps.accounts.models import User
     from apps.documents.models import Document
     from apps.notifications.models import Notification, NotificationTemplate
     from apps.requests.models import Request, RequestFieldValue
@@ -38,7 +38,6 @@ def run() -> dict[str, Any]:
 
     coe_staff = User.objects.filter(username="COE_STAFF").first() or User.objects.filter(role_id__name="SERVICE_DEPT_STAFF").first()
     coe_admin = User.objects.filter(username="COE_ADMIN").first() or User.objects.filter(role_id__name="SERVICE_DEPT_ADMIN").first()
-    teacher_user = User.objects.filter(username="JMCMTS0006").first() or User.objects.filter(role_id__name="SUBJECT_TEACHING_STAFF").first()
 
     # 2. Fetch services
     services = {s.code: s for s in Service.objects.all()}
@@ -276,7 +275,7 @@ def run() -> dict[str, Any]:
             "documents": [],
             "history": [
                 ("Request Submitted", "Application submitted for CIA reappear exam", create_dt(2026, 8, 15, 11, 0), student_66.user_id, 1),
-                ("Rejected", "Attendance criteria not met for CIA reappear eligibility under exam regulations.", create_dt(2026, 8, 18, 15, 0), teacher_user or student_66.user_id, 1),
+                ("Rejected", "Attendance criteria not met for CIA reappear eligibility under exam regulations.", create_dt(2026, 8, 18, 15, 0), coe_staff or student_66.user_id, 1),
             ],
             "notifications": [
                 (template_submitted, create_dt(2026, 8, 15, 11, 1)),

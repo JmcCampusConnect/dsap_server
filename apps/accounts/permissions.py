@@ -44,15 +44,6 @@ class IsStudent(permissions.BasePermission):
             request.user.has_role(Roles.STUDENT)
         )
         
-class IsTeachingStaff(permissions.BasePermission):
-    def has_permission(self, request, view):
-        return bool(
-            request.user and 
-            request.user.is_authenticated and
-            request.user.is_active and
-            request.user.has_role(Roles.SUBJECT_TEACHING_STAFF)
-        )
-        
 class IsUserManager(permissions.BasePermission):
     """
     Gate for user-mutating actions.
@@ -112,10 +103,7 @@ class IsOwnAcademicDepartment(permissions.BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_active or not request.user.is_authenticated:
             return False
-        return request.user.has_any_role([
-            Roles.SUBJECT_TEACHING_STAFF,
-            Roles.SYSTEM_ADMIN,
-        ])
+        return request.user.has_role(Roles.SYSTEM_ADMIN)
 
     def has_object_permission(self, request, view, obj):
         if request.user.is_system_admin():

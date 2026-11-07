@@ -22,17 +22,6 @@ SERVICE_WORKFLOWS = {
     "COE-001": [
         {
             "step_order": 1,
-            "step_name": "Course Teacher Review",
-            "responsible_role": "SUBJECT_TEACHING_STAFF",
-            "action_type": ActionTypes.REVIEW if HAS_MODELS else "REVIEW",
-            "allowed_actions": [
-                AllowedActions.APPROVE if HAS_MODELS else "APPROVE",
-                AllowedActions.REJECT if HAS_MODELS else "REJECT",
-                AllowedActions.RETURN if HAS_MODELS else "RETURN",
-            ],
-        },
-        {
-            "step_order": 2,
             "step_name": "Document & Fee Verification",
             "responsible_role": "SERVICE_DEPT_STAFF",
             "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
@@ -43,7 +32,7 @@ SERVICE_WORKFLOWS = {
             ],
         },
         {
-            "step_order": 3,
+            "step_order": 2,
             "step_name": "COE Admin Final Approval",
             "responsible_role": "SERVICE_DEPT_ADMIN",
             "action_type": ActionTypes.APPROVAL if HAS_MODELS else "APPROVAL",
