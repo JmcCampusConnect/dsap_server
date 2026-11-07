@@ -23,43 +23,12 @@ def run() -> dict[str, Any]:
 
     print("\nSeeding students...\n")
 
-    students_data = [
-        {
-            "register_number": "24MCA057",
-            "name": "Abdul Rasak H",
-            "email": "student057@example.com",
-            "dob": date(2000, 1, 1),
-            "year_of_admission": "2024-2026",
-            "section": "A",
-            "mobile_number": "9876543210",
-            "status": True,
-        },
-        {
-            "register_number": "24MCA064",
-            "name": "Mohamed Hamdhan J",
-            "email": "student064@example.com",
-            "dob": date(2000, 2, 1),
-            "year_of_admission": "2024-2026",
-            "section": "A",
-            "mobile_number": "9876543211",
-            "status": True,
-        },
-        {
-            "register_number": "24MCA065",
-            "name": "Mohamed Hanifa M",
-            "email": "student065@example.com",
-            "dob": date(2000, 3, 1),
-            "year_of_admission": "2024-2026",
-            "section": "A",
-            "mobile_number": "9876543212",
-            "status": True,
-        },
-        {
+    students_data = [{
             "register_number": "24MCA066",
             "name": "Mohamed Jainul Haneef M I",
             "email": "student066@example.com",
             "dob": date(2000, 4, 1),
-            "year_of_admission": "2024-2026",
+            "year_of_admission": "2024",
             "section": "A",
             "mobile_number": "9876543213",
             "status": True,

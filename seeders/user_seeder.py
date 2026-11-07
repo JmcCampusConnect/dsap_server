@@ -13,8 +13,8 @@ except Exception as exc:
 
 
 def run() -> dict[str, Any]:
-    """Seed default users for all system roles.
 
+    """Seed default users for all system roles.
     Service Department scoping requires `service_department_id` to be set on
     SERVICE_DEPT_ADMIN / SERVICE_DEPT_STAFF rows. Two departments are populated
     (COE and LIB) so cross-department isolation can be verified end-to-end.
@@ -49,51 +49,10 @@ def run() -> dict[str, Any]:
         {
             "role": "SERVICE_DEPT_STAFF",
             "username": "COE_STAFF",
-            "email": "coe.staff1@example.com",
+            "email": "coe.staff@example.com",
             "service_department_code": "COE",
-        },
-        {
-            # Second staff row so list filtering and pagination are visible
-            # inside a single department.
-            "role": "SERVICE_DEPT_STAFF",
-            "username": "COE_STAFF_2",
-            "email": "coe.staff2@example.com",
-            "service_department_code": "COE",
-        },
-
-        # ── Department B — LIB (proves cross-department isolation) ─────
-        {
-            "role": "SERVICE_DEPT_ADMIN",
-            "username": "LIB_ADMIN",
-            "email": "lib.admin@example.com",
-            "service_department_code": "LIB",
-        },
-        {
-            "role": "SERVICE_DEPT_STAFF",
-            "username": "LIB_STAFF",
-            "email": "lib.staff1@example.com",
-            "service_department_code": "LIB",
-        },
-
+        },        
         # ── Students ──────────────────────────────────────────────────
-        {
-            "role": "STUDENT",
-            "username": "24MCA057",
-            "email": "student057@example.com",
-            "service_department_code": None,
-        },
-        {
-            "role": "STUDENT",
-            "username": "24MCA064",
-            "email": "student064@example.com",
-            "service_department_code": None,
-        },
-        {
-            "role": "STUDENT",
-            "username": "24MCA065",
-            "email": "student065@example.com",
-            "service_department_code": None,
-        },
         {
             "role": "STUDENT",
             "username": "24MCA066",
@@ -102,14 +61,11 @@ def run() -> dict[str, Any]:
         },
     ]
 
-    # Cache DB lookups so we resolve each role / department at most once
-    # per seeder run.
     role_cache = {}
     dept_cache = {}
 
     for user_data in users:
 
-        # --- Resolve role --------------------------------------------
         role = role_cache.get(user_data["role"])
         if role is None:
             role = Role.objects.filter(name=user_data["role"]).first()
@@ -121,7 +77,6 @@ def run() -> dict[str, Any]:
                 continue
             role_cache[user_data["role"]] = role
 
-        # --- Resolve service department (when applicable) ------------
         dept_code = user_data.get("service_department_code")
         dept = None
         if dept_code:
@@ -131,8 +86,6 @@ def run() -> dict[str, Any]:
                 ).first()
             dept = dept_cache[dept_code]
             if dept is None:
-                # Do not abort — the user is still useful for non-scoped tests.
-                # The warning surfaces a runner-order mistake.
                 print(
                     f"  WARNING: Service department '{dept_code}' not found. "
                     f"Seeding '{user_data['username']}' without a department."
@@ -155,9 +108,6 @@ def run() -> dict[str, Any]:
             print(f"  Created {user_data['role']} user: {user.username}{dept_label}")
             continue
 
-        # --- Backfill: existing rows from before this ticket ---------
-        # Re-running the seeder on an old database must pick up the new
-        # department assignments without requiring a manual migration.
         current_dept_id = getattr(user, "service_department_id_id", None)
         target_dept_id = dept.id if dept else None
 
