@@ -82,6 +82,8 @@ class DepartmentQueueTestCase(TestCase):
             detail_res.data["student"]["department_name"],
             student.academic_department_id.branch,
         )
+        self.assertEqual(detail_res.data["student"]["dob"], student.dob.isoformat())
+        self.assertEqual(detail_res.data["student"]["email"], student.user_id.email)
 
     # ----------------------------------------------------------------------
     # 4. Users cannot act on workflow steps they are not authorized to handle

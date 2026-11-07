@@ -298,8 +298,6 @@ class ServiceSerializer(serializers.ModelSerializer):
                     a.strip().upper() for a in raw_actions
                     if isinstance(a, str) and a.strip().upper() in AllowedActions.all()
                 ]
-                if not allowed_actions:
-                    allowed_actions = [AllowedActions.APPROVE, AllowedActions.REJECT]
 
             step_order = index + 1
 

@@ -20,6 +20,7 @@ from apps.payments.models import Payment
 class StudentInfoSerializer(serializers.ModelSerializer):
     degree = serializers.CharField(source='academic_department_id.degree', read_only=True)
     department_name = serializers.CharField(source='academic_department_id.branch', read_only=True)
+    email = serializers.EmailField(source='user_id.email', read_only=True, allow_null=True)
 
     class Meta:
         model = Student
@@ -27,6 +28,8 @@ class StudentInfoSerializer(serializers.ModelSerializer):
             'id',
             'register_number',
             'name',
+            'dob',
+            'email',
             'mobile_number',
             'year_of_admission',
             'section',

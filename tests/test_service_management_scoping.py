@@ -531,3 +531,28 @@ class ScopeBasedServiceManagementTests(TestCase):
             if service['id'] == self.srv_a1.id
         )
         self.assertEqual(filtered_service['document_count'], 1)
+
+    def test_service_update_preserves_empty_workflow_allowed_actions(self):
+        self.client.force_authenticate(user=self.admin_a)
+        response = self.client.put(
+            f'/api/services/{self.srv_a1.id}/',
+            data={
+                'name': self.srv_a1.name,
+                'service_department_id': self.dept_a.id,
+                'base_fee': str(self.srv_a1.base_fee),
+                'sla_days': self.srv_a1.sla_days,
+                'workflow_steps': [{
+                    'id': self.step_a1.id,
+                    'step_order': 1,
+                    'step_name': self.step_a1.step_name,
+                    'responsible_role_id': self.role_dept_admin.id,
+                    'action_type': self.step_a1.action_type,
+                    'allowed_actions': [],
+                }],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.step_a1.refresh_from_db()
+        self.assertEqual(self.step_a1.allowed_actions, [])
