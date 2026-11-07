@@ -7,7 +7,11 @@ from apps.workflow.models import WorkflowStep
 from apps.workflow.serializers import WorkflowStepSerializer
 from apps.accounts.models import Role
 from apps.accounts.role_constants import Roles
-from apps.workflow.constants import ActionTypes, AllowedActions, configure_role_action
+from apps.workflow.constants import (
+    AllowedActions,
+    WorkflowStepKinds,
+    configure_role_action,
+)
 from apps.audit.models import AuditLog
 
 
@@ -258,6 +262,33 @@ class ServiceSerializer(serializers.ModelSerializer):
             step_name = (item.get("step_name") or item.get("name") or "").strip()
             if not step_name:
                 continue
+            existing_obj = None
+            if step_id_raw is not None:
+                try:
+                    existing_obj = existing_steps.get(int(step_id_raw))
+                except (ValueError, TypeError):
+                    pass
+
+            step_order = index + 1
+            step_kind = item.get("step_kind")
+            if len(workflow_steps_data) >= 4 and step_order == len(workflow_steps_data) - 1:
+                step_kind = WorkflowStepKinds.COMPLETION
+            elif len(workflow_steps_data) >= 4 and step_order == len(workflow_steps_data):
+                step_kind = WorkflowStepKinds.ISSUANCE
+            elif step_kind not in WorkflowStepKinds.all():
+                normalized_name = step_name.casefold()
+                if existing_obj:
+                    step_kind = existing_obj.step_kind
+                elif normalized_name in {"document & record verification", "document verification"}:
+                    step_kind = WorkflowStepKinds.VERIFICATION
+                elif normalized_name in {"service processing & preparation", "service processing"}:
+                    step_kind = WorkflowStepKinds.PROCESSING
+                elif normalized_name == "service completion":
+                    step_kind = WorkflowStepKinds.COMPLETION
+                elif normalized_name == "document issuance & delivery":
+                    step_kind = WorkflowStepKinds.ISSUANCE
+                else:
+                    step_kind = WorkflowStepKinds.CUSTOM
 
             role_id_val = item.get("responsible_role_id")
             role_obj = None
@@ -286,10 +317,6 @@ class ServiceSerializer(serializers.ModelSerializer):
                         {"workflow_steps": "No supported role is available for workflow steps."}
                     )
 
-            action_type = (item.get("action_type") or "REVIEW").strip().upper()
-            if action_type not in ActionTypes.all():
-                action_type = ActionTypes.REVIEW
-
             raw_actions = item.get("allowed_actions")
             if raw_actions is None or not isinstance(raw_actions, list):
                 allowed_actions = []
@@ -302,24 +329,16 @@ class ServiceSerializer(serializers.ModelSerializer):
                 role_obj.name,
                 allowed_actions,
                 step_name=step_name,
-                step_order=index + 1,
+                step_order=step_order,
+                total_steps=len(workflow_steps_data),
+                step_kind=step_kind,
             )
-
-            step_order = index + 1
-
-            existing_obj = None
-            if step_id_raw is not None:
-                try:
-                    int_id = int(step_id_raw)
-                    existing_obj = existing_steps.get(int_id)
-                except (ValueError, TypeError):
-                    existing_obj = None
 
             if existing_obj:
                 old_data = WorkflowStepSerializer(existing_obj).data
                 existing_obj.step_name = step_name
+                existing_obj.step_kind = step_kind
                 existing_obj.responsible_role_id = role_obj
-                existing_obj.action_type = action_type
                 existing_obj.allowed_actions = allowed_actions
                 existing_obj.step_order = step_order
                 existing_obj.save()
@@ -344,8 +363,8 @@ class ServiceSerializer(serializers.ModelSerializer):
                 step_obj = WorkflowStep.objects.create(
                     service_id=service,
                     step_name=step_name,
+                    step_kind=step_kind,
                     responsible_role_id=role_obj,
-                    action_type=action_type,
                     allowed_actions=allowed_actions,
                     step_order=step_order,
                 )
@@ -403,7 +422,7 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             "id",
             "step_order",
             "step_name",
-            "action_type",
+            "step_kind",
             "responsible_role_id",
             "allowed_actions",
         ]

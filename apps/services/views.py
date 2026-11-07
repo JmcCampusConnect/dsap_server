@@ -18,7 +18,7 @@ from apps.accounts.permissions import (
     IsServiceDeptStaff,
     IsOwnServiceDepartment,
 )
-from apps.workflow.constants import ACTION_TYPE_CHOICES, ALLOWED_ACTION_CHOICES
+from apps.workflow.constants import ALLOWED_ACTION_CHOICES
 from apps.services.serializers import (
     ServiceSerializer, 
     ServiceFieldSerializer, 
@@ -244,9 +244,6 @@ class ServiceViewSet(viewsets.ModelViewSet):
             for r in roles
         ]
 
-        action_type_options = [
-            {"value": code, "label": label} for code, label in ACTION_TYPE_CHOICES
-        ]
         allowed_action_options = [
             {"value": code, "label": label} for code, label in ALLOWED_ACTION_CHOICES
         ]
@@ -257,7 +254,6 @@ class ServiceViewSet(viewsets.ModelViewSet):
             "codes": code_options,
             "names": name_options,
             "roles": role_options,
-            "action_types": action_type_options,
             "allowed_actions": allowed_action_options,
         })
 

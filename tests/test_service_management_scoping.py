@@ -128,7 +128,6 @@ class ScopeBasedServiceManagementTests(TestCase):
             step_order=1,
             step_name='Verification A1',
             responsible_role_id=cls.role_dept_admin,
-            action_type='REVIEW',
             allowed_actions=['FORWARD', 'REJECT'],
         )
         cls.step_b1 = WorkflowStep.objects.create(
@@ -136,7 +135,6 @@ class ScopeBasedServiceManagementTests(TestCase):
             step_order=1,
             step_name='Verification B1',
             responsible_role_id=cls.role_dept_admin,
-            action_type='REVIEW',
             allowed_actions=['FORWARD', 'REJECT'],
         )
 
@@ -479,7 +477,6 @@ class ScopeBasedServiceManagementTests(TestCase):
             'step_name': 'Staff Step',
             'step_order': 2,
             'responsible_role_id': self.role_dept_admin.id,
-            'action_type': 'REVIEW',
             'allowed_actions': ['FORWARD'],
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
@@ -490,7 +487,6 @@ class ScopeBasedServiceManagementTests(TestCase):
             'step_name': 'Admin Step 2',
             'step_order': 2,
             'responsible_role_id': self.role_dept_admin.id,
-            'action_type': 'REVIEW',
             'allowed_actions': ['FORWARD'],
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
@@ -500,7 +496,6 @@ class ScopeBasedServiceManagementTests(TestCase):
             'step_name': 'Foreign Step',
             'step_order': 2,
             'responsible_role_id': self.role_dept_admin.id,
-            'action_type': 'REVIEW',
             'allowed_actions': ['FORWARD'],
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
@@ -546,7 +541,6 @@ class ScopeBasedServiceManagementTests(TestCase):
                     'step_order': 1,
                     'step_name': self.step_a1.step_name,
                     'responsible_role_id': self.role_dept_admin.id,
-                    'action_type': self.step_a1.action_type,
                     'allowed_actions': [],
                 }],
             },
@@ -571,7 +565,6 @@ class ScopeBasedServiceManagementTests(TestCase):
                     'step_order': 1,
                     'step_name': self.step_a1.step_name,
                     'responsible_role_id': self.role_dept_admin.id,
-                    'action_type': self.step_a1.action_type,
                     'allowed_actions': ['FORWARD', 'RETURN'],
                 }],
             },
@@ -603,7 +596,6 @@ class ScopeBasedServiceManagementTests(TestCase):
                     'step_order': 1,
                     'step_name': self.step_a1.step_name,
                     'responsible_role_id': self.role_dept_staff.id,
-                    'action_type': self.step_a1.action_type,
                     'allowed_actions': ['RETURN', 'REJECT'],
                 }],
             },
@@ -614,7 +606,7 @@ class ScopeBasedServiceManagementTests(TestCase):
         self.step_a1.refresh_from_db()
         self.assertEqual(self.step_a1.allowed_actions, ['RETURN', 'REJECT', 'FORWARD'])
 
-    def test_service_update_configures_issue_for_issuance_step(self):
+    def test_service_update_configures_actions_by_stage_after_inserting_a_step(self):
         self.client.force_authenticate(user=self.admin_a)
         response = self.client.put(
             f'/api/services/{self.srv_a1.id}/',
@@ -627,26 +619,27 @@ class ScopeBasedServiceManagementTests(TestCase):
                     'step_order': 1,
                     'step_name': 'Document & Record Verification',
                     'responsible_role_id': self.role_dept_staff.id,
-                    'action_type': 'VERIFICATION',
                     'allowed_actions': ['FORWARD', 'RETURN', 'REJECT'],
                 }, {
                     'step_order': 2,
-                    'step_name': 'Service Processing & Preparation',
+                    'step_name': 'New Workflow Step',
                     'responsible_role_id': self.role_dept_staff.id,
-                    'action_type': 'PROCESSING',
-                    'allowed_actions': ['FORWARD', 'RETURN'],
+                    'allowed_actions': ['FORWARD'],
                 }, {
                     'step_order': 3,
-                    'step_name': 'Service Completion',
+                    'step_name': 'Service Processing & Preparation',
                     'responsible_role_id': self.role_dept_staff.id,
-                    'action_type': 'PROCESSING',
+                    'allowed_actions': ['FORWARD', 'RETURN', 'REJECT'],
+                }, {
+                    'step_order': 4,
+                    'step_name': 'Finish Processing',
+                    'responsible_role_id': self.role_dept_staff.id,
                     'allowed_actions': ['COMPLETE'],
                 }, {
                     'id': self.step_a1.id,
-                    'step_order': 4,
-                    'step_name': 'Document Issuance & Delivery',
+                    'step_order': 5,
+                    'step_name': 'Deliver Documents',
                     'responsible_role_id': self.role_dept_staff.id,
-                    'action_type': 'PROCESSING',
                     'allowed_actions': ['ISSUE'],
                 }],
             },
@@ -656,3 +649,39 @@ class ScopeBasedServiceManagementTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.step_a1.refresh_from_db()
         self.assertEqual(self.step_a1.allowed_actions, ['ISSUE'])
+        self.assertEqual(self.step_a1.step_kind, 'ISSUANCE')
+        self.assertEqual(
+            WorkflowStep.objects.get(
+                service_id=self.srv_a1,
+                step_order=1,
+            ).allowed_actions,
+            ['REJECT', 'RETURN', 'FORWARD'],
+        )
+        self.assertEqual(
+            WorkflowStep.objects.get(
+                service_id=self.srv_a1,
+                step_order=2,
+            ).allowed_actions,
+            ['FORWARD'],
+        )
+        self.assertEqual(
+            WorkflowStep.objects.get(
+                service_id=self.srv_a1,
+                step_order=3,
+            ).allowed_actions,
+            ['FORWARD', 'RETURN', 'REJECT'],
+        )
+        self.assertEqual(
+            WorkflowStep.objects.get(
+                service_id=self.srv_a1,
+                step_order=4,
+            ).step_kind,
+            'COMPLETION',
+        )
+        self.assertEqual(
+            WorkflowStep.objects.get(
+                service_id=self.srv_a1,
+                step_order=4,
+            ).allowed_actions,
+            ['COMPLETE'],
+        )

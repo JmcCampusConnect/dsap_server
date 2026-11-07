@@ -79,7 +79,6 @@ class DashboardAPITestCase(TestCase):
             step_order=1,
             step_name="Review",
             responsible_role_id=role,
-            action_type="REVIEW",
             allowed_actions=[],
         )
         return service

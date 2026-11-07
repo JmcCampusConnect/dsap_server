@@ -10,8 +10,6 @@ from apps.audit.models import AuditLog
 from apps.workflow.models import WorkflowStep, WorkflowHistory
 from apps.workflow.serializers import WorkflowStepSerializer, WorkflowHistorySerializer
 from apps.workflow.constants import (
-    ActionTypes,
-    ACTION_TYPE_CHOICES,
     AllowedActions,
     ALLOWED_ACTION_CHOICES,
 )
@@ -218,15 +216,11 @@ class WorkflowStepViewSet(viewsets.ModelViewSet):
             }
             for r in roles
         ]
-        action_type_options = [
-            {"value": code, "label": label} for code, label in ACTION_TYPE_CHOICES
-        ]
         allowed_action_options = [
             {"value": code, "label": label} for code, label in ALLOWED_ACTION_CHOICES
         ]
 
         return Response({
             "roles": role_options,
-            "action_types": action_type_options,
             "allowed_actions": allowed_action_options,
         })

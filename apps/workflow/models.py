@@ -1,4 +1,5 @@
 from django.db import models
+from apps.workflow.constants import WorkflowStepKinds
 
 
 class WorkflowStep(models.Model):
@@ -13,6 +14,11 @@ class WorkflowStep(models.Model):
 
     step_order = models.SmallIntegerField()
     step_name = models.CharField(max_length=150)
+    step_kind = models.CharField(
+        max_length=20,
+        choices=[(kind, kind.title()) for kind in WorkflowStepKinds.all()],
+        default=WorkflowStepKinds.CUSTOM,
+    )
 
     responsible_role_id = models.ForeignKey(
         'accounts.Role',
@@ -20,7 +26,6 @@ class WorkflowStep(models.Model):
         db_column='responsible_role_id'
     )
 
-    action_type = models.CharField(max_length=20)
     allowed_actions = models.JSONField(
         default=list,
         blank=True,

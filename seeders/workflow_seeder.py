@@ -6,13 +6,12 @@ try:
     from apps.accounts.models import Role
     from apps.services.models import Service
     from apps.workflow.models import WorkflowStep
-    from apps.workflow.constants import ActionTypes, AllowedActions
+    from apps.workflow.constants import AllowedActions, WorkflowStepKinds
     HAS_MODELS = True
 except Exception as exc:
     Role = None
     Service = None
     WorkflowStep = None
-    ActionTypes = None
     AllowedActions = None
     HAS_MODELS = False
     print(f"Models could not be imported: {exc}")
@@ -22,8 +21,8 @@ DEFAULT_WORKFLOW_STEPS = [
     {
         "step_order": 1,
         "step_name": "Document & Record Verification",
+        "step_kind": WorkflowStepKinds.VERIFICATION if HAS_MODELS else "VERIFICATION",
         "responsible_role": "SERVICE_DEPT_STAFF",
-        "action_type": ActionTypes.VERIFICATION if HAS_MODELS else "VERIFICATION",
         "allowed_actions": [
             AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
             AllowedActions.RETURN if HAS_MODELS else "RETURN",
@@ -33,25 +32,25 @@ DEFAULT_WORKFLOW_STEPS = [
     {
         "step_order": 2,
         "step_name": "Service Processing & Preparation",
+        "step_kind": WorkflowStepKinds.PROCESSING if HAS_MODELS else "PROCESSING",
         "responsible_role": "SERVICE_DEPT_STAFF",
-        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
         "allowed_actions": [
             AllowedActions.FORWARD if HAS_MODELS else "FORWARD",
-            AllowedActions.RETURN if HAS_MODELS else "RETURN",
+            AllowedActions.REJECT if HAS_MODELS else "REJECT",
         ],
     },
     {
         "step_order": 3,
         "step_name": "Service Completion",
+        "step_kind": WorkflowStepKinds.COMPLETION if HAS_MODELS else "COMPLETION",
         "responsible_role": "SERVICE_DEPT_STAFF",
-        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
         "allowed_actions": [AllowedActions.COMPLETE if HAS_MODELS else "COMPLETE"],
     },
     {
         "step_order": 4,
         "step_name": "Document Issuance & Delivery",
+        "step_kind": WorkflowStepKinds.ISSUANCE if HAS_MODELS else "ISSUANCE",
         "responsible_role": "SERVICE_DEPT_STAFF",
-        "action_type": ActionTypes.PROCESSING if HAS_MODELS else "PROCESSING",
         "allowed_actions": [AllowedActions.ISSUE if HAS_MODELS else "ISSUE"],
     },
 ]
@@ -63,6 +62,7 @@ SERVICE_WORKFLOWS = {
 
 
 def run() -> dict[str, Any]:
+    
     """Seed the default four-step workflow for the five COE services."""
     if not HAS_MODELS:
         return {"created": 0, "existing": 0, "skipped": True}
@@ -73,6 +73,7 @@ def run() -> dict[str, Any]:
     total_created = 0
 
     with transaction.atomic():
+
         for code, steps in SERVICE_WORKFLOWS.items():
             try:
                 service = Service.objects.get(code=code)
@@ -93,8 +94,8 @@ def run() -> dict[str, Any]:
                     service_id=service,
                     step_order=step_data["step_order"],
                     step_name=step_data["step_name"],
+                    step_kind=step_data["step_kind"],
                     responsible_role_id=role,
-                    action_type=step_data["action_type"],
                     allowed_actions=step_data["allowed_actions"],
                 )
                 total_created += 1

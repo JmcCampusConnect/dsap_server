@@ -3,28 +3,22 @@ Workflow constants and system-wide choices for DASP.
 Single Source of Truth for action types and workflow allowed actions.
 """
 
-class ActionTypes:
-    REVIEW = "REVIEW"
-    PROCESSING = "PROCESSING"
+class WorkflowStepKinds:
     VERIFICATION = "VERIFICATION"
-    NOTIFICATION = "NOTIFICATION"
+    PROCESSING = "PROCESSING"
+    COMPLETION = "COMPLETION"
+    ISSUANCE = "ISSUANCE"
+    CUSTOM = "CUSTOM"
 
     @classmethod
     def all(cls):
         return [
-            cls.REVIEW,
-            cls.PROCESSING,
             cls.VERIFICATION,
-            cls.NOTIFICATION,
+            cls.PROCESSING,
+            cls.COMPLETION,
+            cls.ISSUANCE,
+            cls.CUSTOM,
         ]
-
-
-ACTION_TYPE_CHOICES = [
-    (ActionTypes.REVIEW, "Review"),
-    (ActionTypes.PROCESSING, "Processing"),
-    (ActionTypes.VERIFICATION, "Verification"),
-    (ActionTypes.NOTIFICATION, "Notification"),
-]
 
 
 class AllowedActions:
@@ -54,24 +48,46 @@ ALLOWED_ACTION_CHOICES = [
 ]
 
 
-def configure_role_action(role_name, actions, step_name=None, step_order=None):
-    """Keep valid actions and enforce the fixed completion and issuance stages."""
+def configure_role_action(
+    role_name,
+    actions,
+    step_name=None,
+    step_order=None,
+    total_steps=None,
+    step_kind=None,
+):
+    """Keep valid actions and enforce the final stages by their workflow position."""
     valid_actions = []
     for action in actions or []:
         if action in AllowedActions.all() and action not in valid_actions:
             valid_actions.append(action)
 
-    if step_order == 4:
+    normalized_name = (step_name or "").strip().casefold()
+    normalized_kind = (step_kind or "").strip().upper()
+    if normalized_kind == WorkflowStepKinds.ISSUANCE or normalized_name == "document issuance & delivery" or (
+        total_steps is not None and total_steps >= 4 and step_order == total_steps
+    ):
         return [AllowedActions.ISSUE]
-    valid_actions = [action for action in valid_actions if action != AllowedActions.ISSUE]
+    if normalized_kind == WorkflowStepKinds.COMPLETION or normalized_name == "service completion" or (
+        total_steps is not None and total_steps >= 4 and step_order == total_steps - 1
+    ):
+        return [AllowedActions.COMPLETE]
+    if normalized_kind == WorkflowStepKinds.VERIFICATION or normalized_name in {
+        "document & record verification",
+        "document verification",
+    }:
+        return [
+            AllowedActions.REJECT,
+            AllowedActions.RETURN,
+            AllowedActions.FORWARD,
+        ]
 
-    required_action = (
-        AllowedActions.COMPLETE
-        if step_order == 3 or step_name == "Service Completion"
-        else AllowedActions.FORWARD if role_name == "SERVICE_DEPT_STAFF" else None
-    )
-    if required_action and required_action not in valid_actions:
-        valid_actions.append(required_action)
+    valid_actions = [
+        action for action in valid_actions
+        if action not in {AllowedActions.COMPLETE, AllowedActions.ISSUE}
+    ]
+    if role_name == "SERVICE_DEPT_STAFF" and AllowedActions.FORWARD not in valid_actions:
+        valid_actions.append(AllowedActions.FORWARD)
     return valid_actions
 
 

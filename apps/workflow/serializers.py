@@ -2,7 +2,11 @@ from rest_framework import serializers
 from apps.workflow.models import WorkflowStep, WorkflowHistory
 from apps.accounts.models import Role
 from apps.accounts.role_constants import Roles
-from apps.workflow.constants import ActionTypes, AllowedActions, configure_role_action
+from apps.workflow.constants import (
+    AllowedActions,
+    WorkflowStepKinds,
+    configure_role_action,
+)
 
 
 class RoleRefSerializer(serializers.ModelSerializer):
@@ -29,9 +33,9 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             "service_id",
             "step_order",
             "step_name",
+            "step_kind",
             "responsible_role_id",
             "responsible_role",
-            "action_type",
             "allowed_actions",
             "created_at",
             "updated_at",
@@ -50,15 +54,13 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Step name cannot be empty.")
         return str(value).strip()
 
-    def validate_action_type(self, value):
-        if not value:
-            raise serializers.ValidationError("Action type is required.")
-        val_upper = str(value).strip().upper()
-        if val_upper not in ActionTypes.all():
+    def validate_step_kind(self, value):
+        normalized = str(value).strip().upper()
+        if normalized not in WorkflowStepKinds.all():
             raise serializers.ValidationError(
-                f"Invalid action type '{value}'. Allowed: {ActionTypes.all()}"
+                f"Invalid step kind '{value}'. Allowed: {WorkflowStepKinds.all()}"
             )
-        return val_upper
+        return normalized
 
     def validate_allowed_actions(self, value):
         if value is None:
@@ -90,19 +92,40 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
             self.instance.allowed_actions if self.instance else [],
         )
         if role:
-            step_order = attrs.get(
-                "step_order",
-                self.instance.step_order if self.instance else None,
-            )
             step_name = attrs.get(
                 "step_name",
                 self.instance.step_name if self.instance else None,
             )
+            step_order = attrs.get(
+                "step_order",
+                self.instance.step_order if self.instance else None,
+            )
+            step_kind = attrs.get(
+                "step_kind",
+                self.instance.step_kind if self.instance else WorkflowStepKinds.CUSTOM,
+            )
+            service_id = (
+                self.instance.service_id_id
+                if self.instance
+                else self.context.get("view").kwargs.get("service_id")
+                if self.context.get("view")
+                else None
+            )
+            total_steps = WorkflowStep.objects.filter(service_id=service_id).count()
+            if self.instance is None:
+                total_steps += 1
+            if total_steps >= 4 and step_order == total_steps - 1:
+                step_kind = WorkflowStepKinds.COMPLETION
+            elif total_steps >= 4 and step_order == total_steps:
+                step_kind = WorkflowStepKinds.ISSUANCE
+            attrs["step_kind"] = step_kind
             attrs["allowed_actions"] = configure_role_action(
                 role.name,
                 actions,
                 step_name=step_name,
                 step_order=step_order,
+                total_steps=total_steps,
+                step_kind=step_kind,
             )
         return attrs
 
