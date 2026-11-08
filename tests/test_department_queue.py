@@ -146,7 +146,7 @@ class DepartmentQueueTestCase(TestCase):
             step_order=4,
         )
         req.current_step_id = completion_step
-        req.current_status = "UNDER_VERIFICATION"
+        req.current_status = "PROCESSING"
         req.save(update_fields=["current_step_id", "current_status", "updated_at"])
         self.client.force_authenticate(user=self.coe_staff)
 
@@ -197,6 +197,7 @@ class DepartmentQueueTestCase(TestCase):
         # REQ-2026-0001 has 1 VERIFIED and 1 PENDING document
         req = Request.objects.get(request_number="REQ-2026-0001")
         self.client.force_authenticate(user=self.coe_staff)
+        self.assertEqual(req.current_status, "SUBMITTED")
 
         # Forward should fail because passport photo is PENDING
         res = self.client.post(
@@ -219,6 +220,9 @@ class DepartmentQueueTestCase(TestCase):
             )
             self.assertEqual(v_res.status_code, status.HTTP_200_OK)
 
+        req.refresh_from_db()
+        self.assertEqual(req.current_status, "VERIFIED")
+
         # Now forward should succeed
         res_ok = self.client.post(
             f"/api/department-queue/{req.id}/forward/",
@@ -229,6 +233,7 @@ class DepartmentQueueTestCase(TestCase):
         self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
         req.refresh_from_db()
         self.assertEqual(req.current_step_id.step_order, 2)
+        self.assertEqual(req.current_status, "PROCESSING")
 
     # ----------------------------------------------------------------------
     # 8. Invalid workflow transitions are rejected
@@ -285,7 +290,7 @@ class DepartmentQueueTestCase(TestCase):
     # 10. Reject fails without remarks
     # ----------------------------------------------------------------------
     def test_10_reject_fails_without_remarks(self):
-        # REQ-2026-0001 (UNDER_VERIFICATION)
+        # REQ-2026-0001 (SUBMITTED with documents awaiting verification)
         req = Request.objects.get(request_number="REQ-2026-0001")
         self.client.force_authenticate(user=self.sysadmin)
 

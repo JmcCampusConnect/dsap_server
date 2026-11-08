@@ -85,12 +85,12 @@ def run() -> dict[str, Any]:
     )
 
     requests_config = [
-        # 1. UNDER_VERIFICATION
+        # 1. SUBMITTED with documents awaiting verification
         {
             "request_number": "REQ-2026-0001",
             "student": student_66,
             "service_code": "COE-002",
-            "status": "UNDER_VERIFICATION",
+            "status": "SUBMITTED",
             "step_order": 1,
             "submitted_at": create_dt(2026, 8, 28, 10, 15),
             "completed_at": None,

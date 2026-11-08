@@ -39,8 +39,8 @@ from apps.requests.models import Request
 from apps.services.models import ServiceDocument
 from apps.workflow.constants import (
     AllowedActions,
-    NotificationEventCodes,
     RequestStatuses,
+    WorkflowStepKinds,
 )
 from apps.workflow.models import WorkflowHistory, WorkflowStep
 from common.pagination import StandardPagination
@@ -67,21 +67,67 @@ logger = logging.getLogger(__name__)
 
 _TRANSITION_RULES = {
     # action           : set of request statuses from which the action is valid
-    AllowedActions.FORWARD:  {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
-    AllowedActions.RETURN:   {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
-    AllowedActions.REJECT:   {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
-    AllowedActions.COMPLETE: {RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION},
+    AllowedActions.FORWARD:  {
+        RequestStatuses.SUBMITTED,
+        RequestStatuses.VERIFIED,
+        RequestStatuses.PROCESSING,
+    },
+    AllowedActions.RETURN:   {
+        RequestStatuses.SUBMITTED,
+        RequestStatuses.VERIFIED,
+        RequestStatuses.PROCESSING,
+    },
+    AllowedActions.REJECT:   {
+        RequestStatuses.SUBMITTED,
+        RequestStatuses.VERIFIED,
+        RequestStatuses.PROCESSING,
+    },
+    AllowedActions.COMPLETE: {RequestStatuses.PROCESSING},
     AllowedActions.ISSUE: {RequestStatuses.COMPLETED},
 }
 
-# Status that each action produces
-_ACTION_TO_STATUS = {
-    AllowedActions.FORWARD:  RequestStatuses.UNDER_VERIFICATION,
-    AllowedActions.RETURN:   RequestStatuses.RETURNED,
-    AllowedActions.REJECT:   RequestStatuses.REJECTED,
-    AllowedActions.COMPLETE: RequestStatuses.COMPLETED,
-    AllowedActions.ISSUE: RequestStatuses.ISSUED,
-}
+
+def _documents_verified(request_obj):
+    """Return whether all required and all uploaded documents are verified."""
+    mandatory_ids = set(
+        ServiceDocument.objects.filter(
+            service_id=request_obj.service_id,
+            is_mandatory=True,
+        ).values_list('id', flat=True)
+    )
+    documents = list(
+        Document.objects.filter(request_id=request_obj).values(
+            'service_document_id_id',
+            'verification_status',
+        )
+    )
+    uploaded_mandatory_ids = {
+        document['service_document_id_id']
+        for document in documents
+        if document['service_document_id_id'] in mandatory_ids
+    }
+    return (
+        mandatory_ids.issubset(uploaded_mandatory_ids)
+        and all(document['verification_status'] == 'VERIFIED' for document in documents)
+    )
+
+
+def _status_for_step(step, documents_verified):
+    if step.step_kind == WorkflowStepKinds.VERIFICATION:
+        return (
+            RequestStatuses.VERIFIED
+            if documents_verified
+            else RequestStatuses.SUBMITTED
+        )
+    if step.step_kind in {
+        WorkflowStepKinds.PROCESSING,
+        WorkflowStepKinds.COMPLETION,
+        WorkflowStepKinds.CUSTOM,
+    }:
+        return RequestStatuses.PROCESSING
+    if step.step_kind == WorkflowStepKinds.ISSUANCE:
+        return RequestStatuses.COMPLETED
+    return RequestStatuses.PROCESSING
 
 
 class DeptQueueViewSet(GenericViewSet):
@@ -362,49 +408,58 @@ class DeptQueueViewSet(GenericViewSet):
     def verify_document(self, request, pk=None, doc_id=None):
         """Verify or reject a specific document belonging to this request."""
         request_obj = self._get_request_or_403(pk)
-
-        # Request must be in an actionable state for doc verification
-        if request_obj.current_status not in (
-            RequestStatuses.SUBMITTED, RequestStatuses.UNDER_VERIFICATION
-        ):
-            return Response(
-                {'detail': 'Documents can only be reviewed for requests that are submitted or under verification.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Fetch document — enforce it belongs to this request (prevents URL manipulation)
-        try:
-            document = Document.objects.get(pk=doc_id, request_id=request_obj)
-        except Document.DoesNotExist:
-            return Response(
-                {'detail': 'Document not found for this request.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
         serializer = DocumentVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         new_status = serializer.validated_data['verification_status']
         remarks = serializer.validated_data.get('rejection_remarks', None)
 
-        # Validate status transition
-        if document.verification_status == new_status:
-            return Response(
-                {'detail': f'Document is already {new_status}.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if document.verification_status == 'VERIFIED' and new_status == 'REJECTED':
-            return Response(
-                {'detail': 'A verified document cannot be rejected. Return the request first.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        with transaction.atomic():
+            request_obj = Request.objects.select_for_update().get(pk=request_obj.pk)
+            if request_obj.current_status not in (
+                RequestStatuses.SUBMITTED,
+                RequestStatuses.VERIFIED,
+            ):
+                return Response(
+                    {'detail': 'Documents can only be reviewed for submitted or verified requests.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        document.verification_status = new_status
-        if new_status == 'REJECTED':
-            document.rejection_remarks = remarks
-        else:
-            document.rejection_remarks = None
-        document.save(update_fields=['verification_status', 'rejection_remarks', 'updated_at'])
+            try:
+                document = Document.objects.select_for_update().get(
+                    pk=doc_id,
+                    request_id=request_obj,
+                )
+            except Document.DoesNotExist:
+                return Response(
+                    {'detail': 'Document not found for this request.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if document.verification_status == new_status:
+                return Response(
+                    {'detail': f'Document is already {new_status}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if document.verification_status == 'VERIFIED' and new_status == 'REJECTED':
+                return Response(
+                    {'detail': 'A verified document cannot be rejected. Return the request first.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            document.verification_status = new_status
+            if new_status == 'REJECTED':
+                document.rejection_remarks = remarks
+            else:
+                document.rejection_remarks = None
+            document.save(update_fields=['verification_status', 'rejection_remarks', 'updated_at'])
+
+            if _documents_verified(request_obj):
+                request_obj.current_status = RequestStatuses.VERIFIED
+                request_obj.save(update_fields=['current_status', 'updated_at'])
+            elif request_obj.current_status == RequestStatuses.VERIFIED:
+                request_obj.current_status = RequestStatuses.SUBMITTED
+                request_obj.save(update_fields=['current_status', 'updated_at'])
 
         from .serializers import QueueDocumentSerializer
         return Response(QueueDocumentSerializer(document).data, status=status.HTTP_200_OK)
@@ -422,36 +477,43 @@ class DeptQueueViewSet(GenericViewSet):
         request_obj = self._get_request_or_403(pk)
         self._assert_step_permission(request_obj, AllowedActions.FORWARD)
 
-        # Validate: all mandatory documents must be VERIFIED
-        service = request_obj.service_id
-        mandatory_doc_ids = set(
-            ServiceDocument.objects
-            .filter(service_id=service, is_mandatory=True)
-            .values_list('id', flat=True)
-        )
-        if mandatory_doc_ids:
-            verified_doc_ids = set(
-                Document.objects
-                .filter(
-                    request_id=request_obj,
-                    service_document_id_id__in=mandatory_doc_ids,
-                    verification_status='VERIFIED',
-                )
-                .values_list('service_document_id_id', flat=True)
+        # All required documents must be uploaded, and every uploaded document verified.
+        if not _documents_verified(request_obj):
+            mandatory_doc_ids = set(
+                ServiceDocument.objects
+                .filter(service_id=request_obj.service_id, is_mandatory=True)
+                .values_list('id', flat=True)
             )
-            unverified_ids = mandatory_doc_ids - verified_doc_ids
-            if unverified_ids:
-                unverified_names = list(
-                    ServiceDocument.objects
-                    .filter(id__in=unverified_ids)
-                    .values_list('document_name', flat=True)
+            documents = list(
+                Document.objects.filter(request_id=request_obj).values(
+                    'service_document_id_id',
+                    'verification_status',
+                    'service_document_id__document_name',
                 )
-                raise ValidationError({
-                    'detail': 'All mandatory documents must be verified before forwarding.',
-                    'unverified_documents': unverified_names,
-                })
+            )
+            uploaded_mandatory_ids = {
+                document['service_document_id_id']
+                for document in documents
+                if document['service_document_id_id'] in mandatory_doc_ids
+            }
+            missing_ids = mandatory_doc_ids - uploaded_mandatory_ids
+            unverified_names = list(
+                ServiceDocument.objects.filter(id__in=missing_ids).values_list(
+                    'document_name', flat=True
+                )
+            )
+            unverified_names.extend(
+                document['service_document_id__document_name']
+                for document in documents
+                if document['verification_status'] != 'VERIFIED'
+            )
+            raise ValidationError({
+                'detail': 'All required and uploaded documents must be verified before forwarding.',
+                'unverified_documents': unverified_names,
+            })
 
         # Find the next workflow step
+        service = request_obj.service_id
         current_step = request_obj.current_step_id
         next_step = (
             WorkflowStep.objects
@@ -474,7 +536,10 @@ class DeptQueueViewSet(GenericViewSet):
 
         with transaction.atomic():
             request_obj.current_step_id = next_step
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.FORWARD]
+            request_obj.current_status = _status_for_step(
+                next_step,
+                documents_verified=True,
+            )
             request_obj.save(update_fields=['current_step_id', 'current_status', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.FORWARD, remarks)
             send_workflow_notification(request_obj, AllowedActions.FORWARD)
@@ -504,7 +569,7 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.RETURN]
+            request_obj.current_status = RequestStatuses.RETURNED
             # Keep current_step_id so when student resubmits it lands in the right step
             request_obj.save(update_fields=['current_status', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.RETURN, remarks)
@@ -536,7 +601,7 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.REJECT]
+            request_obj.current_status = RequestStatuses.REJECTED
             request_obj.completed_at = timezone.now()
             request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.REJECT, remarks)
@@ -578,7 +643,7 @@ class DeptQueueViewSet(GenericViewSet):
 
         with transaction.atomic():
             request_obj.current_step_id = next_step
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.COMPLETE]
+            request_obj.current_status = RequestStatuses.COMPLETED
             request_obj.save(update_fields=['current_step_id', 'current_status', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.COMPLETE, remarks)
             send_workflow_notification(request_obj, AllowedActions.COMPLETE)
@@ -600,7 +665,7 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
-            request_obj.current_status = _ACTION_TO_STATUS[AllowedActions.ISSUE]
+            request_obj.current_status = RequestStatuses.ISSUED
             request_obj.completed_at = timezone.now()
             request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
             self._record_history(request_obj, current_step, AllowedActions.ISSUE, remarks)

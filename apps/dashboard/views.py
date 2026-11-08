@@ -26,7 +26,8 @@ DASHBOARD_ROLES = (
 )
 NON_DRAFT_STATUSES = (
     RequestStatuses.SUBMITTED,
-    RequestStatuses.UNDER_VERIFICATION,
+    RequestStatuses.VERIFIED,
+    RequestStatuses.PROCESSING,
     RequestStatuses.COMPLETED,
     RequestStatuses.ISSUED,
     RequestStatuses.REJECTED,
@@ -35,7 +36,8 @@ NON_DRAFT_STATUSES = (
 TERMINAL_STATUSES = (RequestStatuses.ISSUED, RequestStatuses.REJECTED)
 PENDING_STATUSES = (
     RequestStatuses.SUBMITTED,
-    RequestStatuses.UNDER_VERIFICATION,
+    RequestStatuses.VERIFIED,
+    RequestStatuses.PROCESSING,
     RequestStatuses.COMPLETED,
     RequestStatuses.RETURNED,
 )
@@ -376,10 +378,7 @@ class DashboardView(APIView):
                     "total_requests": total_requests,
                     "open_requests": open_requests.count(),
                     "awaiting_verification": requests.filter(
-                        current_status__in=(
-                            RequestStatuses.SUBMITTED,
-                            RequestStatuses.UNDER_VERIFICATION,
-                        )
+                        current_status=RequestStatuses.SUBMITTED,
                     ).count(),
                     "ready_for_issuance": ready_for_issuance,
                     "completed_this_month": completed_this_month,

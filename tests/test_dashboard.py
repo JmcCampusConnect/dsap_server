@@ -132,7 +132,7 @@ class DashboardAPITestCase(TestCase):
         self.create_request(
             "DASH-OWN-ADMIN",
             self.admin_service,
-            RequestStatuses.UNDER_VERIFICATION,
+            RequestStatuses.VERIFIED,
         )
         self.create_request(
             "DASH-OTHER-STAFF",

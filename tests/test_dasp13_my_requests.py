@@ -36,8 +36,9 @@ class MyRequestsEndpointTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["total"], 7)
         self.assertEqual(response.data["DRAFT"], 1)
-        self.assertEqual(response.data["SUBMITTED"], 1)
-        self.assertEqual(response.data["UNDER_VERIFICATION"], 1)
+        self.assertEqual(response.data["SUBMITTED"], 2)
+        self.assertEqual(response.data["VERIFIED"], 0)
+        self.assertEqual(response.data["PROCESSING"], 0)
         self.assertEqual(response.data["COMPLETED"], 1)
         self.assertEqual(response.data["ISSUED"], 1)
         self.assertEqual(response.data["REJECTED"], 1)
@@ -45,11 +46,11 @@ class MyRequestsEndpointTestCase(TestCase):
 
     def test_status_filtering(self):
         self.client.force_authenticate(user=self.student_user_66)
-        response = self.client.get("/api/requests/my/?status=UNDER_VERIFICATION", HTTP_HOST="localhost")
+        response = self.client.get("/api/requests/my/?status=SUBMITTED", HTTP_HOST="localhost")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["request_number"], "REQ-2026-0001")
+        self.assertEqual(len(results), 2)
+        self.assertIn("REQ-2026-0001", [request["request_number"] for request in results])
 
     def test_search_by_request_number(self):
         self.client.force_authenticate(user=self.student_user_66)
@@ -66,7 +67,7 @@ class MyRequestsEndpointTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
         self.assertEqual(data["request_number"], "REQ-2026-0001")
-        self.assertEqual(data["current_status"], "UNDER_VERIFICATION")
+        self.assertEqual(data["current_status"], "SUBMITTED")
         self.assertEqual(data["service"]["name"], "Transcript Certificate")
         self.assertIsNotNone(data["current_step"])
         self.assertEqual(data["assigned_role"], "SERVICE_DEPT_STAFF")
