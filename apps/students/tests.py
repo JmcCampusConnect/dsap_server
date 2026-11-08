@@ -1,11 +1,13 @@
 from django.test import TestCase
 from rest_framework import serializers
+from rest_framework.test import APIRequestFactory
 
 from apps.accounts.models import Role, User
 from apps.departments.models import AcademicDepartment
 
 from .models import Student
 from .serializers import StudentSerializer
+from .views import StudentViewSet
 
 
 class StudentSerializerDepartmentTests(TestCase):
@@ -185,3 +187,76 @@ class StudentSerializerDepartmentTests(TestCase):
 
         self.assertEqual(updated_student.academic_department_id_id, updated_department.id)
         self.assertEqual(updated_student.user_id.academic_department_id_id, updated_department.id)
+        
+
+class StudentViewSetGraduateFilterTests(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.student_role = Role.objects.create(name='STUDENT', description='Student role')
+        self.ug_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='SFM',
+            degree='B.Tech',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
+        self.pg_department = AcademicDepartment.objects.create(
+            code='MCS',
+            stream='SFM',
+            degree='M.Tech',
+            branch='Computer Science',
+            type='PG',
+            category='SCIENCE',
+        )
+        self.ug_student = Student.objects.create(
+            register_number='22CSE0001',
+            name='UG Student',
+            user_id=User.objects.create(
+                username='22CSE0001',
+                email='ug.student@example.com',
+                password_hash='hashed-password',
+                role_id=self.student_role,
+                academic_department_id=self.ug_department,
+                is_active=True,
+            ),
+            academic_department_id=self.ug_department,
+            year_of_admission='2022',
+            stream='SFM',
+            mobile_number='9876543210',
+            status=True,
+        )
+        self.pg_student = Student.objects.create(
+            register_number='22MCS0001',
+            name='PG Student',
+            user_id=User.objects.create(
+                username='22MCS0001',
+                email='pg.student@example.com',
+                password_hash='hashed-password',
+                role_id=self.student_role,
+                academic_department_id=self.pg_department,
+                is_active=True,
+            ),
+            academic_department_id=self.pg_department,
+            year_of_admission='2022',
+            stream='SFM',
+            mobile_number='9876543211',
+            status=True,
+        )
+
+    def test_get_queryset_filters_students_by_graduate_type(self):
+        request = self.factory.get('/students/', {'graduate': 'UG'})
+        view = StudentViewSet()
+        view.request = request
+
+        queryset = view.get_queryset()
+
+        self.assertEqual(list(queryset.values_list('id', flat=True)), [self.ug_student.id])
+
+        request = self.factory.get('/students/', {'graduate': 'PG'})
+        view = StudentViewSet()
+        view.request = request
+
+        queryset = view.get_queryset()
+
+        self.assertEqual(list(queryset.values_list('id', flat=True)), [self.pg_student.id])
