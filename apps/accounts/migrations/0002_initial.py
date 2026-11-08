@@ -16,11 +16,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='user',
-            name='academic_department_id',
-            field=models.ForeignKey(blank=True, db_column='academic_department_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='departments.academicdepartment'),
-        ),
-        migrations.AddField(
-            model_name='user',
             name='service_department_id',
             field=models.ForeignKey(blank=True, db_column='service_department_id', null=True, on_delete=django.db.models.deletion.RESTRICT, to='departments.servicedepartment'),
         ),

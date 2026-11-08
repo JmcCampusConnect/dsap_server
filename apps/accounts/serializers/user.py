@@ -1,6 +1,6 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
-from apps.departments.models import AcademicDepartment, ServiceDepartment
+from apps.departments.models import ServiceDepartment
 from ..models import User, Role
 from ..role_constants import Roles
 
@@ -14,14 +14,6 @@ class ServiceDepartmentBriefSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AcademicDepartmentBriefSerializer(serializers.ModelSerializer):
-    """Minimal academic-department payload embedded into user responses."""
-
-    class Meta:
-        model = AcademicDepartment
-        fields = ["id", "code", "degree", "branch", "name"]
-        read_only_fields = fields
-
 class UserSerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source="role_id.name", read_only=True)
     role_id = serializers.PrimaryKeyRelatedField(
@@ -32,21 +24,17 @@ class UserSerializer(serializers.ModelSerializer):
     
     # Writable FK ids (UI submits numeric ids).
     service_department_id = serializers.PrimaryKeyRelatedField(queryset=ServiceDepartment.objects.all(), required=False, allow_null=True)
-    academic_department_id = serializers.PrimaryKeyRelatedField(queryset=AcademicDepartment.objects.all(),required=False, allow_null=True)
     
     # Read-only nested payloads for UI rendering without extra calls.
     service_department = ServiceDepartmentBriefSerializer(
         source="service_department_id", read_only=True
-    )
-    academic_department = AcademicDepartmentBriefSerializer(
-        source="academic_department_id", read_only=True
     )
 
     class Meta:
         model = User
         fields = [
             "id", "username", "email", "password", "role_id", "role_name", 
-            "service_department_id", "service_department", "academic_department_id", "academic_department", "is_active", "created_at", "last_login"
+            "service_department_id", "service_department", "is_active", "created_at", "last_login"
         ]
         read_only_fields = ["id", "created_at", "last_login"]
     

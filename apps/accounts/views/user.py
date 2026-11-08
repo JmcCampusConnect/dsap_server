@@ -47,7 +47,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = (
             User.objects.select_related(
-                "role_id", "service_department_id", "academic_department_id"
+                "role_id", "service_department_id"
             )
             .exclude(role_id__name=Roles.STUDENT)
             .all()
@@ -96,7 +96,7 @@ class UserViewSet(viewsets.ModelViewSet):
         being masked by a 404. List scoping still lives in get_queryset.
         """
         queryset = User.objects.select_related(
-            "role_id", "service_department_id", "academic_department_id"
+            "role_id", "service_department_id"
         ).all()
         
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
