@@ -119,7 +119,11 @@ class StudentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_object(self):
-       
+        """
+        Resolve a student by pk from the unscoped table so inactive students
+        can still be retrieved, updated, deactivated, or activated without
+        failing with a 404. List scoping still lives in get_queryset.
+        """
         queryset = (
             Student.objects
             .select_related('user_id', 'academic_department_id')
