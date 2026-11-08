@@ -99,21 +99,6 @@ class IsOwnServiceDepartment(permissions.BasePermission):
             return False
         return user_dept == obj_dept
 
-class IsOwnAcademicDepartment(permissions.BasePermission):
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_active or not request.user.is_authenticated:
-            return False
-        return request.user.has_role(Roles.SYSTEM_ADMIN)
-
-    def has_object_permission(self, request, view, obj):
-        if request.user.is_system_admin():
-            return True
-        user_dept = _get_dept_id(request.user, 'academic_department_id')
-        obj_dept = _get_dept_id(obj, 'academic_department_id')
-        if not user_dept or not obj_dept:
-            return False
-        return user_dept == obj_dept
-
 class IsSelfStudent(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if hasattr(obj, 'user'):

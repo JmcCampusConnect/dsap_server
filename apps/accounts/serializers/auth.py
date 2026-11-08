@@ -14,7 +14,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get('password')
 
         try:
-            user = User.objects.select_related('role_id', 'service_department_id', 'academic_department_id').get(username=username)
+            user = User.objects.select_related('role_id', 'service_department_id').get(username=username)
         except User.DoesNotExist:
             raise AuthenticationFailed('User not found!')
 

@@ -44,14 +44,6 @@ class User(models.Model):
         db_column='service_department_id'
     )
 
-    academic_department_id = models.ForeignKey(
-        'departments.AcademicDepartment',
-        on_delete=models.RESTRICT,
-        null=True,
-        blank=True,
-        db_column='academic_department_id'
-    )
-
     is_active = models.BooleanField(default=True)
 
     last_login = models.DateTimeField(
@@ -81,10 +73,6 @@ class User(models.Model):
     @property
     def service_department(self):
         return self.service_department_id
-    
-    @property
-    def academic_department(self):
-        return self.academic_department_id
     
     def has_role(self, role_name: str) -> bool:
         return self.role_name == role_name

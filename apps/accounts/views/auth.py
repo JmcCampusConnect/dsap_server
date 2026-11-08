@@ -142,7 +142,8 @@ class ValidateTokenView(APIView):
         degree = None
         branch = None
         if role_name == "STUDENT":
-            academic_department = student.academic_department_id if student else user.academic_department_id
+            if student:
+                academic_department = student.academic_department_id
             if academic_department:
                 department_name = academic_department.code
                 degree = academic_department.degree
