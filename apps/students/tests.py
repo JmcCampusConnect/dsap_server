@@ -1,5 +1,6 @@
 from django.test import TestCase
 from rest_framework import serializers
+from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from apps.accounts.models import Role, User
@@ -217,7 +218,6 @@ class StudentViewSetGraduateFilterTests(TestCase):
                 email='ug.student@example.com',
                 password_hash='hashed-password',
                 role_id=self.student_role,
-                academic_department_id=self.ug_department,
                 is_active=True,
             ),
             academic_department_id=self.ug_department,
@@ -234,7 +234,6 @@ class StudentViewSetGraduateFilterTests(TestCase):
                 email='pg.student@example.com',
                 password_hash='hashed-password',
                 role_id=self.student_role,
-                academic_department_id=self.pg_department,
                 is_active=True,
             ),
             academic_department_id=self.pg_department,
@@ -247,7 +246,7 @@ class StudentViewSetGraduateFilterTests(TestCase):
     def test_get_queryset_filters_students_by_graduate_type(self):
         request = self.factory.get('/students/', {'graduate': 'UG'})
         view = StudentViewSet()
-        view.request = request
+        view.request = Request(request)
 
         queryset = view.get_queryset()
 
@@ -255,8 +254,45 @@ class StudentViewSetGraduateFilterTests(TestCase):
 
         request = self.factory.get('/students/', {'graduate': 'PG'})
         view = StudentViewSet()
-        view.request = request
+        view.request = Request(request)
 
         queryset = view.get_queryset()
 
         self.assertEqual(list(queryset.values_list('id', flat=True)), [self.pg_student.id])
+
+    def test_get_queryset_filters_all_stream_variants_of_department_code(self):
+        other_stream_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='SFW',
+            degree='B.Tech',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
+        other_stream_user = User.objects.create(
+            username='22CSE0002',
+            email='ug.student2@example.com',
+            password_hash='hashed-password',
+            role_id=self.student_role,
+            is_active=True,
+        )
+        other_stream_student = Student.objects.create(
+            register_number='22CSE0002',
+            name='UG Student Second Stream',
+            user_id=other_stream_user,
+            academic_department_id=other_stream_department,
+            year_of_admission='2022',
+            stream='SFW',
+            mobile_number='9876543212',
+            status=True,
+        )
+        request = self.factory.get('/students/', {'academic_department_code': 'CSE'})
+        view = StudentViewSet()
+        view.request = Request(request)
+
+        queryset = view.get_queryset()
+
+        self.assertCountEqual(
+            queryset.values_list('id', flat=True),
+            [self.ug_student.id, other_stream_student.id],
+        )

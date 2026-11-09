@@ -129,6 +129,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         if department_id:
             queryset = queryset.filter(academic_department_id_id=department_id)
 
+        department_code = self.request.query_params.get('academic_department_code', '').strip()
+        if department_code:
+            queryset = queryset.filter(academic_department_id__code__iexact=department_code)
+
         return queryset
 
     @staticmethod
