@@ -96,6 +96,7 @@ class RequestDocumentSerializer(serializers.ModelSerializer):
             'file_path',
             'file_hash',
             'verification_status',
+            'rejection_remarks',
             'created_at',
             'updated_at',
         ]

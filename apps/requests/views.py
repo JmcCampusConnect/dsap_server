@@ -1,4 +1,5 @@
 import hashlib
+import mimetypes
 import uuid
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -218,6 +220,50 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
         )
         serializer = RequestDocumentSerializer(documents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _document_file_response(self, request_obj, doc_id, *, as_attachment):
+        try:
+            document = Document.objects.get(pk=doc_id, request_id=request_obj)
+        except Document.DoesNotExist:
+            return Response(
+                {'detail': 'Document not found for this request.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not document.file_path or not default_storage.exists(document.file_path):
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            file_obj = default_storage.open(document.file_path, 'rb')
+        except FileNotFoundError:
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = Path(document.file_path).name
+        content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+        response = FileResponse(
+            file_obj,
+            as_attachment=as_attachment,
+            filename=filename,
+            content_type=content_type,
+        )
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/view')
+    def view_document(self, request, pk=None, doc_id=None):
+        request_obj = self.get_object()
+        return self._document_file_response(request_obj, doc_id, as_attachment=False)
+
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/download')
+    def download_document(self, request, pk=None, doc_id=None):
+        request_obj = self.get_object()
+        return self._document_file_response(request_obj, doc_id, as_attachment=True)
     
 class StudentRequestViewSet(viewsets.GenericViewSet):
     """
