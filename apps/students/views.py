@@ -9,6 +9,7 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -116,6 +117,25 @@ class StudentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(academic_department_id_id=department_id)
 
         return queryset
+
+    def get_object(self):
+        """
+        Resolve a student by pk from the unscoped table so inactive students
+        can still be retrieved, updated, deactivated, or activated without
+        failing with a 404. List scoping still lives in get_queryset.
+        """
+        queryset = (
+            Student.objects
+            .select_related('user_id', 'academic_department_id')
+            .all()
+        )
+
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     @staticmethod
     def _normalize_header(value):
@@ -271,6 +291,30 @@ class StudentViewSet(viewsets.ModelViewSet):
             changes=snapshot,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get', 'post'], url_path='activate')
+    def activate(self, request, pk=None):
+        instance = self.get_object()
+        old_status = instance.status
+
+        instance.status = True
+        instance.save(update_fields=['status', 'updated_at'])
+
+        if instance.user_id:
+            instance.user_id.is_active = True
+            instance.user_id.save(update_fields=['is_active', 'updated_at'])
+
+        AuditLog.log(
+            request=request,
+            action='ACTIVATE',
+            obj=instance,
+            object_id=instance.pk,
+            changes={'status': {'old': old_status, 'new': True}},
+        )
+        return Response(
+            {'message': 'Student activated successfully.'},
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['get'], url_path='export')
     def export_excel(self, request):
