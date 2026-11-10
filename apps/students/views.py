@@ -92,15 +92,29 @@ class StudentViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get('status', '').strip()
 
         if status_filter:
-            try:
-                parsed_status = self._parse_status_value(status_filter)
-            except ValueError:
-                queryset = queryset.none()
+            normalized_status = status_filter.upper()
+            if normalized_status == 'ALL':
+                status_filter = ''
             else:
-                if parsed_status is not None:
-                    queryset = queryset.filter(status=parsed_status)
+                try:
+                    parsed_status = self._parse_status_value(status_filter)
+                except ValueError:
+                    queryset = queryset.none()
+                else:
+                    if parsed_status is not None:
+                        queryset = queryset.filter(status=parsed_status)
         elif not include_inactive:
             queryset = queryset.filter(status=True)
+            
+        graduate_filter = self.request.query_params.get('graduate', '').strip()
+        if graduate_filter:
+            normalized_graduate = graduate_filter.upper()
+            if normalized_graduate == 'ALL':
+                graduate_filter = ''
+            elif normalized_graduate in {'UG', 'PG'}:
+                queryset = queryset.filter(academic_department_id__type__iexact=normalized_graduate)
+            else:
+                queryset = queryset.none()
 
         exact_filters = {
             'register_number__iexact': self.request.query_params.get('register_number', '').strip(),
@@ -115,6 +129,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         department_id = self.request.query_params.get('academic_department_id', '').strip()
         if department_id:
             queryset = queryset.filter(academic_department_id_id=department_id)
+
+        department_code = self.request.query_params.get('academic_department_code', '').strip()
+        if department_code:
+            queryset = queryset.filter(academic_department_id__code__iexact=department_code)
 
         return queryset
 
