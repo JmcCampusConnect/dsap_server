@@ -22,6 +22,14 @@ class StudentSerializerDepartmentTests(TestCase):
             type='UG',
             category='SCIENCE',
         )
+        self.aided_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='Aided',
+            degree='B.Sc',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
 
     def test_create_student_derives_department_from_register_number(self):
         serializer = StudentSerializer(
@@ -42,7 +50,6 @@ class StudentSerializerDepartmentTests(TestCase):
         student = serializer.save()
 
         self.assertEqual(student.academic_department_id_id, self.department.id)
-        self.assertEqual(student.user_id.academic_department_id_id, self.department.id)
         self.assertEqual(student.user_id.username, '12CSE0001')
         self.assertTrue(User.objects.filter(username='12CSE0001').exists())
         self.assertTrue(Student.objects.filter(register_number='12CSE0001').exists())
@@ -66,7 +73,7 @@ class StudentSerializerDepartmentTests(TestCase):
         with self.assertRaises(serializers.ValidationError) as context:
             serializer.save()
 
-        self.assertIn('Department not found.', str(context.exception))
+        self.assertIn('Department not found for the selected stream.', str(context.exception))
 
     def test_create_student_accepts_aided_stream_value(self):
         serializer = StudentSerializer(
@@ -86,6 +93,7 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         student = serializer.save()
 
+        self.assertEqual(student.academic_department_id_id, self.aided_department.id)
         self.assertEqual(student.stream, 'AIDED')
         self.assertEqual(student.user_id.username, '12CSE0002')
         self.assertEqual(Student.objects.get(register_number='12CSE0002').stream, 'AIDED')
@@ -117,7 +125,6 @@ class StudentSerializerDepartmentTests(TestCase):
             email='existing.student@example.com',
             password_hash='hashed-password',
             role_id=self.student_role,
-            academic_department_id=self.department,
             is_active=True,
         )
 
@@ -141,7 +148,7 @@ class StudentSerializerDepartmentTests(TestCase):
             'A user with this email already exists.'
         )
 
-    def test_update_student_syncs_academic_department_to_user(self):
+    def test_update_student_derives_academic_department_from_register_number(self):
         serializer = StudentSerializer(
             data={
                 'register_number': '12CSE0003',
@@ -167,6 +174,14 @@ class StudentSerializerDepartmentTests(TestCase):
             type='UG',
             category='SCIENCE',
         )
+        updated_aided_department = AcademicDepartment.objects.create(
+            code='MTH',
+            stream='Aided',
+            degree='B.Sc',
+            branch='Mathematics',
+            type='UG',
+            category='SCIENCE',
+        )
 
         update_serializer = StudentSerializer(
             instance=student,
@@ -175,7 +190,7 @@ class StudentSerializerDepartmentTests(TestCase):
                 'name': 'Sync Student',
                 'year_of_admission': '2026',
                 'dob': '01-01-2006',
-                'stream': 'SFM',
+                'stream': 'Aided',
                 'mobile_number': '9876543212',
                 'status': False,
                 'academic_department_id': updated_department.id,
@@ -186,8 +201,8 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertTrue(update_serializer.is_valid(), update_serializer.errors)
         updated_student = update_serializer.save()
 
-        self.assertEqual(updated_student.academic_department_id_id, updated_department.id)
-        self.assertEqual(updated_student.user_id.academic_department_id_id, updated_department.id)
+        self.assertEqual(updated_student.academic_department_id_id, updated_aided_department.id)
+        self.assertEqual(updated_student.user_id.username, '12MTH0003')
         
 
 class StudentViewSetGraduateFilterTests(TestCase):

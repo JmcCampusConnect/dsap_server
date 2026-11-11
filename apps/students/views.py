@@ -253,12 +253,15 @@ class StudentViewSet(viewsets.ModelViewSet):
             return None
         return value[2:5].strip().upper() or None
 
-    def _get_department_from_register_number(self, register_number):
+    def _get_department_from_register_number(self, register_number, stream):
         department_code = self._extract_department_code(register_number)
-        if not department_code:
+        if not department_code or not stream:
             return None
 
-        return AcademicDepartment.objects.filter(code__iexact=department_code).first()
+        return AcademicDepartment.objects.filter(
+            code__iexact=department_code,
+            stream__iexact=stream,
+        ).first()
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -487,10 +490,6 @@ class StudentViewSet(viewsets.ModelViewSet):
                     else:
                         seen_emails.add(email_key)
 
-            department = self._get_department_from_register_number(register_number)
-            if not department:
-                row_errors.append('Department not found.')
-
             if not year_of_admission:
                 row_errors.append('Year of Admission is required.')
             elif len(year_of_admission) > 9:
@@ -512,6 +511,10 @@ class StudentViewSet(viewsets.ModelViewSet):
             except ValueError as exc:
                 row_errors.append(str(exc))
                 stream = None
+
+            department = self._get_department_from_register_number(register_number, stream)
+            if not department:
+                row_errors.append('Department not found for the selected stream.')
 
             if not mobile_number:
                 row_errors.append('Mobile Number is required.')
