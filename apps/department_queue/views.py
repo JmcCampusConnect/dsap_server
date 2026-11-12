@@ -35,6 +35,7 @@ from rest_framework.viewsets import GenericViewSet
 
 from apps.accounts.role_constants import Roles
 from apps.documents.models import Document
+from apps.payments.services import PaymentFlowError
 from apps.requests.models import Request
 from apps.services.models import ServiceDocument
 from apps.workflow.constants import (
@@ -274,6 +275,13 @@ class DeptQueueViewSet(GenericViewSet):
         if not step:
             raise ValidationError({'detail': 'Request has no current workflow step.'})
 
+        if step.step_kind == WorkflowStepKinds.PAYMENT_VERIFY:
+            raise PaymentFlowError(
+                "PAYMENT_NOT_VERIFIED",
+                "Use the payment verification endpoint to confirm or reject this payment.",
+                409,
+            )
+
         # 1. Role check (SYSTEM_ADMIN bypasses)
         if not self._is_system_admin():
             user = self.request.user
@@ -408,6 +416,15 @@ class DeptQueueViewSet(GenericViewSet):
     def verify_document(self, request, pk=None, doc_id=None):
         """Verify or reject a specific document belonging to this request."""
         request_obj = self._get_request_or_403(pk)
+        if (
+            request_obj.current_step_id
+            and request_obj.current_step_id.step_kind == WorkflowStepKinds.PAYMENT_VERIFY
+        ):
+            raise PaymentFlowError(
+                "PAYMENT_NOT_VERIFIED",
+                "Documents cannot be reviewed before payment verification.",
+                409,
+            )
         serializer = DocumentVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

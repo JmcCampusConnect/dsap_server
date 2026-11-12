@@ -12,8 +12,15 @@ import openpyxl
 
 from apps.departments.models import ServiceDepartment
 from apps.departments.serializers import ServiceDepartmentSerializer
+from apps.departments.serializers.service_department import (
+    ServiceDepartmentOfficeDetailsSerializer,
+)
 from apps.accounts.models import User
-from apps.accounts.permissions import IsSystemAdmin, IsOwnServiceDepartment
+from apps.accounts.permissions import (
+    CanManageDepartmentOffice,
+    IsSystemAdmin,
+    IsOwnServiceDepartment,
+)
 from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from common.pagination import StandardPagination
@@ -25,6 +32,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        if self.action == "office_details" and self.request.method == "GET":
+            return ServiceDepartment.objects.all()
         
         # Start with base queryset with search/filter capabilities
         qs = ServiceDepartment.objects.all().order_by("code")
@@ -70,14 +79,50 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         return qs.none()
     
     def get_permissions(self):
+        if self.action == "office_details":
+            return [IsAuthenticated(), CanManageDepartmentOffice()]
         # List and retrieve: require authenticated and permission to view own dept(or system admin)
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated(), IsOwnServiceDepartment()]
         # Create, destroy: only System Admin
         if self.action in ['create', 'destroy']:
             return [IsAuthenticated(), IsSystemAdmin()]
-        # Update, partial_update: System Admin (full) or Dept Admin (restricted via serializer)
-        return [IsAuthenticated(), IsOwnServiceDepartment()]
+        # Department profile and office configuration can only be changed by admins.
+        return [IsAuthenticated(), CanManageDepartmentOffice()]
+
+    @action(
+        detail=True,
+        methods=["get", "put", "patch"],
+        url_path="office-details",
+    )
+    def office_details(self, request, pk=None):
+        department = self.get_object()
+        if request.method == "GET":
+            return Response(
+                ServiceDepartmentOfficeDetailsSerializer(department).data
+            )
+
+        serializer = ServiceDepartmentOfficeDetailsSerializer(
+            department,
+            data=request.data,
+            partial=request.method == "PATCH",
+        )
+        serializer.is_valid(raise_exception=True)
+        old_data = ServiceDepartmentOfficeDetailsSerializer(department).data
+        department = serializer.save()
+        new_data = ServiceDepartmentOfficeDetailsSerializer(department).data
+        changes = {
+            key: {"old": old_data[key], "new": value}
+            for key, value in new_data.items()
+            if old_data[key] != value
+        }
+        AuditLog.log(
+            request=request,
+            action="UPDATE",
+            obj=department,
+            changes=changes,
+        )
+        return Response(new_data)
 
     def perform_create(self, serializer):
         instance = serializer.save()

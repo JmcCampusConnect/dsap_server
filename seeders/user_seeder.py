@@ -51,12 +51,36 @@ def run() -> dict[str, Any]:
             "username": "COE_STAFF",
             "email": "coe.staff@example.com",
             "service_department_code": "COE",
-        },        
+        },
+        {
+            "role": "SERVICE_DEPT_ADMIN",
+            "username": "LIB_ADMIN",
+            "email": "lib.admin@example.com",
+            "service_department_code": "LIB",
+        },
+        {
+            "role": "SERVICE_DEPT_STAFF",
+            "username": "LIB_STAFF",
+            "email": "lib.staff@example.com",
+            "service_department_code": "LIB",
+        },
         # ── Students ──────────────────────────────────────────────────
         {
             "role": "STUDENT",
             "username": "24MCA066",
             "email": "student066@example.com",
+            "service_department_code": None,
+        },
+        {
+            "role": "STUDENT",
+            "username": "24MCA057",
+            "email": "student057@example.com",
+            "service_department_code": None,
+        },
+        {
+            "role": "STUDENT",
+            "username": "24MCA057",
+            "email": "student057@example.com",
             "service_department_code": None,
         },
     ]

@@ -45,6 +45,7 @@ MENU_ACCESS_CONFIG = {
     "service_dept_management": [Roles.SYSTEM_ADMIN],
     "academic_dept_management": [Roles.SYSTEM_ADMIN],
     "department_queue": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
+    "pending_payments": [Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     
     # Reports
     "reports": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
@@ -75,6 +76,7 @@ CAPABILITY_MAP = {
     "request.review": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "queue.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "queue.admin_actions": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "payment.verify": [Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "service.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "service_department.manage": [Roles.SERVICE_DEPT_ADMIN],
     "service_department.manage_all": [Roles.SYSTEM_ADMIN],
