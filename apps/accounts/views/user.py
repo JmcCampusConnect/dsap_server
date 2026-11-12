@@ -120,7 +120,12 @@ class UserViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        instance = self.get_object()
+        instance = serializer.instance
+        if instance.role_id.name == Roles.SYSTEM_ADMIN:
+            raise PermissionDenied(
+                "System Admin accounts cannot be edited or deactivated."
+            )
+
         old_data = self.get_serializer(instance).data
         updated_instance = serializer.save()
         new_data = self.get_serializer(updated_instance).data
@@ -141,6 +146,11 @@ class UserViewSet(viewsets.ModelViewSet):
             )
             
     def perform_destroy(self, instance):
+        if instance.role_id.name == Roles.SYSTEM_ADMIN:
+            raise PermissionDenied(
+                "System Admin accounts cannot be edited or deactivated."
+            )
+
         if instance.id == self.request.user.id:
             raise PermissionDenied("Cannot deactivate self.")
 
