@@ -428,7 +428,6 @@ class StudentViewSet(viewsets.ModelViewSet):
             section = str(get_val('section')).strip()
             stream_raw = get_val('stream')
             mobile_number = str(get_val('mobile_number')).strip()
-            status_raw = get_val('status')
 
             row_errors = []
 
@@ -500,12 +499,6 @@ class StudentViewSet(viewsets.ModelViewSet):
             elif len(mobile_number) > 15:
                 row_errors.append('Mobile Number cannot exceed 15 characters.')
 
-            try:
-                status_value = self._parse_status_value(status_raw)
-            except ValueError as exc:
-                row_errors.append(str(exc))
-                status_value = True
-
             if row_errors:
                 errors.append({'row': row_idx, 'errors': row_errors})
                 continue
@@ -521,7 +514,6 @@ class StudentViewSet(viewsets.ModelViewSet):
                     'section': section or None,
                     'stream': stream,
                     'mobile_number': mobile_number,
-                    'status': status_value,
                 }
             )
 
@@ -557,7 +549,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     email=row['email'],
                     password_hash=make_password(row['dob'].isoformat()),
                     role_id=role,
-                    is_active=bool(row['status']),
+                    is_active=True,
                 )
 
                 Student.objects.create(
@@ -570,7 +562,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     section=row['section'],
                     stream=row['stream'],
                     mobile_number=row['mobile_number'],
-                    status=row['status'],
+                    status=True,
                 )
                 created_count += 1
                 uploaded_register_numbers.append(row['register_number'])
