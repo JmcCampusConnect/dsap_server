@@ -4,6 +4,7 @@ Single Source of Truth for action types and workflow allowed actions.
 """
 
 class WorkflowStepKinds:
+    PAYMENT_VERIFY = "PAYMENT_VERIFY"
     VERIFICATION = "VERIFICATION"
     PROCESSING = "PROCESSING"
     COMPLETION = "COMPLETION"
@@ -13,6 +14,7 @@ class WorkflowStepKinds:
     @classmethod
     def all(cls):
         return [
+            cls.PAYMENT_VERIFY,
             cls.VERIFICATION,
             cls.PROCESSING,
             cls.COMPLETION,
@@ -22,6 +24,9 @@ class WorkflowStepKinds:
 
 
 class AllowedActions:
+    PAYMENT_VERIFY = "PAYMENT_VERIFY"
+    CONFIRM_PAYMENT = "CONFIRM_PAYMENT"
+    REJECT_PAYMENT = "REJECT_PAYMENT"
     REJECT = "REJECT"
     RETURN = "RETURN"
     FORWARD = "FORWARD"
@@ -31,6 +36,8 @@ class AllowedActions:
     @classmethod
     def all(cls):
         return [
+            cls.CONFIRM_PAYMENT,
+            cls.REJECT_PAYMENT,
             cls.REJECT,
             cls.RETURN,
             cls.FORWARD,
@@ -40,6 +47,8 @@ class AllowedActions:
 
 
 ALLOWED_ACTION_CHOICES = [
+    (AllowedActions.CONFIRM_PAYMENT, "Confirm Payment"),
+    (AllowedActions.REJECT_PAYMENT, "Reject Payment"),
     (AllowedActions.REJECT, "Reject"),
     (AllowedActions.RETURN, "Return for Revision"),
     (AllowedActions.FORWARD, "Forward to Next Step"),
@@ -64,6 +73,8 @@ def configure_role_action(
 
     normalized_name = (step_name or "").strip().casefold()
     normalized_kind = (step_kind or "").strip().upper()
+    if normalized_kind == WorkflowStepKinds.PAYMENT_VERIFY:
+        return [AllowedActions.CONFIRM_PAYMENT, AllowedActions.REJECT_PAYMENT]
     if normalized_kind == WorkflowStepKinds.ISSUANCE or normalized_name == "document issuance & delivery" or (
         total_steps is not None and total_steps >= 4 and step_order == total_steps
     ):
@@ -93,6 +104,8 @@ def configure_role_action(
 
 class RequestStatuses:
     DRAFT = "DRAFT"
+    PAYMENT_PENDING = "PAYMENT_PENDING"
+    PAYMENT_ISSUE = "PAYMENT_ISSUE"
     SUBMITTED = "SUBMITTED"
     VERIFIED = "VERIFIED"
     PROCESSING = "PROCESSING"

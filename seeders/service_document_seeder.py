@@ -3,9 +3,11 @@ from typing import Any
 from django.db import transaction
 
 try:
+    from apps.documents.models import Document
     from apps.services.models import Service, ServiceDocument
     HAS_MODELS = True
 except Exception as exc:
+    Document = None
     Service = None
     ServiceDocument = None
     HAS_MODELS = False
@@ -70,6 +72,8 @@ def run() -> dict[str, Any]:
                 continue
 
             # Clear old documents for clean state
+            if Document is not None:
+                Document.objects.filter(service_document_id__service_id=service).delete()
             ServiceDocument.objects.filter(service_id=service).delete()
 
             for doc_info in docs:
