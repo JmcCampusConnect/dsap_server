@@ -54,6 +54,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         'Register Number',
         'Name',
         'Email',
+        'Department Name',
+        'Program Type',
         'Year of Admission',
         'DOB (DD-MM-YYYY)',
         'Section',
@@ -62,10 +64,29 @@ class StudentViewSet(viewsets.ModelViewSet):
         'Status',
     ]
 
+    IMPORT_HEADERS = [
+        'Register Number',
+        'Name',
+        'Email',
+        'Department Name',
+        'Program Type',
+        'Year of Admission',
+        'DOB (DD-MM-YYYY)',
+        'Section',
+        'Stream',
+        'Mobile Number',
+    ]
+
     HEADER_ALIASES = {
         'register number': 'register_number',
         'name': 'name',
         'email': 'email',
+        'department name': 'department_name',
+        'department': 'department_name',
+        'program type': 'program_type',
+        'programme type': 'program_type',
+        'graduate classification': 'program_type',
+        'type': 'program_type',
         'year of admission': 'year_of_admission',
         'dob': 'dob',
         'dob dd mm yyyy': 'dob',
@@ -74,7 +95,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         'section': 'section',
         'stream': 'stream',
         'mobile number': 'mobile_number',
-        'status': 'status',
     }
 
     ALLOWED_STREAMS = {'SFM', 'SFW', 'AIDED'}
@@ -216,6 +236,43 @@ class StudentViewSet(viewsets.ModelViewSet):
         raise ValueError('Stream must be one of: SFM, SFW, Aided.')
 
     @staticmethod
+    def _normalize_program_type(value):
+        if value in (None, ''):
+            return None
+
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+
+        lookup = normalized.upper()
+        if lookup in {'UG', 'UNDERGRADUATE'}:
+            return 'UG'
+        if lookup in {'PG', 'POSTGRADUATE'}:
+            return 'PG'
+
+        raise ValueError('Program Type must be one of: UG, PG.')
+
+    @staticmethod
+    def _normalize_text(value):
+        return ' '.join(str(value or '').strip().lower().split())
+
+    @classmethod
+    def _department_name_matches(cls, department, provided_name):
+        normalized_input = cls._normalize_text(provided_name)
+        if not normalized_input:
+            return True
+
+        candidates = {
+            cls._normalize_text(department.name),
+            cls._normalize_text(f"{department.degree} {department.branch}"),
+            cls._normalize_text(f"{department.code} - {department.degree} - {department.branch}"),
+            cls._normalize_text(department.branch),
+            cls._normalize_text(department.code),
+        }
+        candidates.discard('')
+        return normalized_input in candidates
+
+    @staticmethod
     def _parse_status_value(value):
         if value in (None, ''):
             return True
@@ -235,12 +292,18 @@ class StudentViewSet(viewsets.ModelViewSet):
             return None
         return value[2:5].strip().upper() or None
 
-    def _get_department_from_register_number(self, register_number):
+    def _get_department_from_register_number(self, register_number, stream=None):
         department_code = self._extract_department_code(register_number)
         if not department_code:
             return None
 
-        return AcademicDepartment.objects.filter(code__iexact=department_code).first()
+        queryset = AcademicDepartment.objects.filter(code__iexact=department_code)
+        if stream:
+            matched = queryset.filter(stream__iexact=stream).first()
+            if matched:
+                return matched
+
+        return queryset.first()
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -326,17 +389,19 @@ class StudentViewSet(viewsets.ModelViewSet):
         ws.append(self.EXCEL_HEADERS)
 
         for student in qs:
+            department = student.academic_department_id
             ws.append([
                 student.register_number,
                 student.name,
-                student.user_id.email if student.user_id else '',
-                student.academic_department_id_id or '',
+                (student.user_id.email or '') if student.user_id else '',
+                department.name if department else '',
+                department.type if department else '',
                 student.year_of_admission,
                 student.dob.strftime('%d-%m-%Y') if student.dob else '',
                 student.section or '',
                 'Aided' if str(student.stream).upper() == 'AIDED' else student.stream,
                 student.mobile_number,
-                bool(student.status),
+                'Active' if student.status else 'Inactive',
             ])
 
         response = HttpResponse(
@@ -376,7 +441,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 {
                     'error': (
                         f"Missing required header(s): {missing_readable}. "
-                        f"Required headers are: {', '.join(self.EXCEL_HEADERS)}"
+                        f"Required headers are: {', '.join(self.IMPORT_HEADERS)}"
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -423,12 +488,13 @@ class StudentViewSet(viewsets.ModelViewSet):
             register_number = str(get_val('register_number')).strip()
             name = str(get_val('name')).strip()
             email = str(get_val('email')).strip()
+            department_name_raw = str(get_val('department_name')).strip()
+            program_type_raw = str(get_val('program_type')).strip()
             year_of_admission = str(get_val('year_of_admission')).strip()
             dob_raw = get_val('dob')
             section = str(get_val('section')).strip()
             stream_raw = get_val('stream')
             mobile_number = str(get_val('mobile_number')).strip()
-            status_raw = get_val('status')
 
             row_errors = []
 
@@ -469,9 +535,34 @@ class StudentViewSet(viewsets.ModelViewSet):
                     else:
                         seen_emails.add(email_key)
 
-            department = self._get_department_from_register_number(register_number)
+            try:
+                stream = self._normalize_stream(stream_raw)
+                if not stream:
+                    row_errors.append('Stream is required.')
+            except ValueError as exc:
+                row_errors.append(str(exc))
+                stream = None
+
+            try:
+                program_type = self._normalize_program_type(program_type_raw)
+            except ValueError as exc:
+                row_errors.append(str(exc))
+                program_type = None
+
+            department = self._get_department_from_register_number(register_number, stream)
             if not department:
                 row_errors.append('Department not found.')
+            else:
+                if department_name_raw and not self._department_name_matches(department, department_name_raw):
+                    row_errors.append(
+                        f"Department Name '{department_name_raw}' does not match '{department.name}' "
+                        f"for register number '{register_number}'."
+                    )
+                if program_type and program_type != str(department.type).upper():
+                    row_errors.append(
+                        f"Program Type '{program_type}' does not match '{department.type}' "
+                        f"for department '{department.name}'."
+                    )
 
             if not year_of_admission:
                 row_errors.append('Year of Admission is required.')
@@ -489,22 +580,10 @@ class StudentViewSet(viewsets.ModelViewSet):
             if section and len(section) > 10:
                 row_errors.append('Section cannot exceed 10 characters.')
 
-            try:
-                stream = self._normalize_stream(stream_raw)
-            except ValueError as exc:
-                row_errors.append(str(exc))
-                stream = None
-
             if not mobile_number:
                 row_errors.append('Mobile Number is required.')
             elif len(mobile_number) > 15:
                 row_errors.append('Mobile Number cannot exceed 15 characters.')
-
-            try:
-                status_value = self._parse_status_value(status_raw)
-            except ValueError as exc:
-                row_errors.append(str(exc))
-                status_value = True
 
             if row_errors:
                 errors.append({'row': row_idx, 'errors': row_errors})
@@ -516,12 +595,13 @@ class StudentViewSet(viewsets.ModelViewSet):
                     'name': name,
                     'email': email or None,
                     'department': department,
+                    'department_name': department.name,
+                    'program_type': department.type,
                     'year_of_admission': year_of_admission,
                     'dob': dob,
                     'section': section or None,
                     'stream': stream,
                     'mobile_number': mobile_number,
-                    'status': status_value,
                 }
             )
 
@@ -557,7 +637,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     email=row['email'],
                     password_hash=make_password(row['dob'].isoformat()),
                     role_id=role,
-                    is_active=bool(row['status']),
+                    is_active=True,
                 )
 
                 Student.objects.create(
@@ -570,7 +650,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                     section=row['section'],
                     stream=row['stream'],
                     mobile_number=row['mobile_number'],
-                    status=row['status'],
+                    status=True,
                 )
                 created_count += 1
                 uploaded_register_numbers.append(row['register_number'])
