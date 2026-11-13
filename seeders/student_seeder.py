@@ -31,8 +31,11 @@ def run() -> dict[str, Any]:
             "dob": date(2000, 4, 1),
             "year_of_admission": "2024",
             "section": "A",
+            "stream": "SFM",
             "mobile_number": "9876543213",
             "status": True,
+            "department_code": "MCA",
+            "department_stream": "SFM"
         },
         {
             "register_number": "24MCA057",
@@ -41,8 +44,11 @@ def run() -> dict[str, Any]:
             "dob": date(2001, 1, 12),
             "year_of_admission": "2024",
             "section": "A",
+            "stream": "SFM",
             "mobile_number": "9123456780",
             "status": True,
+            "department_code": "MCA",
+            "department_stream": "SFM"
         },
     ]
 
@@ -52,16 +58,22 @@ def run() -> dict[str, Any]:
         defaults={"description": "Student"}
     )
 
-    # Find an academic department – here we use the MCA (Aided) department
-    # If not found, fallback to any MCA department or raise an error.
-    try:
-        dept = AcademicDepartment.objects.get(code="MCA", stream="Aided")
-    except AcademicDepartment.DoesNotExist:
-        try:
-            dept = AcademicDepartment.objects.get(code="MCA")
-        except AcademicDepartment.DoesNotExist:
-            print("Error: No AcademicDepartment with code 'MCA' found. Please run academic_department_seeder first.")
-            return {"created": 0, "existing": 0, "skipped": True}
+    departments = {}
+    for data in students_data:
+        department_key = (data["department_code"], data["department_stream"])
+        if department_key not in departments:
+            department = AcademicDepartment.objects.filter(
+                code=department_key[0],
+                stream=department_key[1],
+            ).first()
+            if department is None:
+                print(
+                    f"Error: AcademicDepartment {department_key[0]} "
+                    f"({department_key[1]}) not found. Please run "
+                    "academic_department_seeder first."
+                )
+                return {"created": 0, "existing": 0, "skipped": True}
+            departments[department_key] = department
 
     created = 0
     existing = 0
@@ -69,6 +81,7 @@ def run() -> dict[str, Any]:
 
     for data in students_data:
         reg_no = data["register_number"]
+        dept = departments[(data["department_code"], data["department_stream"])]
 
         # 1. Create or get the User
         user, user_created = User.objects.get_or_create(
@@ -82,9 +95,11 @@ def run() -> dict[str, Any]:
         )
         if user_created:
             print(f"  Created user: {reg_no}")
+        elif user.is_active != data["status"]:
+            user.is_active = data["status"]
+            user.save(update_fields=["is_active"])
 
-        # 2. Create or get the Student record
-        student, student_created = Student.objects.get_or_create(
+        student, student_created = Student.objects.update_or_create(
             register_number=reg_no,
             defaults={
                 "name": data["name"],
@@ -93,7 +108,7 @@ def run() -> dict[str, Any]:
                 "academic_department_id": dept,
                 "year_of_admission": data["year_of_admission"],
                 "section": data["section"],
-                "stream": Student.StreamChoices.SFM,  
+                "stream": data["stream"],
                 "mobile_number": data["mobile_number"],
                 "status": data["status"],
             },
@@ -104,7 +119,7 @@ def run() -> dict[str, Any]:
             print(f"  Created student: {reg_no} ({data['name']})")
         else:
             existing += 1
-            print(f"  Student already exists: {reg_no}")
+            print(f"  Updated demo student: {reg_no}")
 
     print(
         f"\nStudent seeding completed. "

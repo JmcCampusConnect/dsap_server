@@ -80,14 +80,19 @@ class StudentSerializer(serializers.ModelSerializer):
             return None
         return value[2:5].strip().upper() or None
 
-    def _get_department_from_register_number(self, register_number):
+    def _get_department_from_register_number(self, register_number, stream):
         department_code = self._extract_department_code(register_number)
         if not department_code:
             raise serializers.ValidationError({'register_number': 'Department not found.'})
 
-        department = AcademicDepartment.objects.filter(code__iexact=department_code).first()
+        department = AcademicDepartment.objects.filter(
+            code__iexact=department_code,
+            stream__iexact=stream,
+        ).first()
         if not department:
-            raise serializers.ValidationError({'register_number': 'Department not found.'})
+            raise serializers.ValidationError(
+                {'register_number': 'Department not found for the selected stream.'}
+            )
 
         return department
 
@@ -155,7 +160,10 @@ class StudentSerializer(serializers.ModelSerializer):
         if not dob:
             raise serializers.ValidationError({'dob': 'Date of birth is required to create the student login.'})
 
-        department = self._get_department_from_register_number(register_number)
+        department = self._get_department_from_register_number(
+            register_number,
+            validated_data.get('stream', Student.StreamChoices.SFM),
+        )
         role = self._get_student_role(validated_data.pop('role_id', None))
         validated_data.pop('academic_department_id', None)
         email = validated_data.pop('email', None)
@@ -165,7 +173,6 @@ class StudentSerializer(serializers.ModelSerializer):
             email=email,
             password_hash=make_password(dob.isoformat()),
             role_id=role,
-            academic_department_id=department,
             is_active=bool(validated_data.get('status', True)),
         )
 
@@ -182,7 +189,10 @@ class StudentSerializer(serializers.ModelSerializer):
         dob = validated_data.get('dob', instance.dob)
         email = validated_data.pop('email', None)
         role = self._get_student_role(validated_data.pop('role_id', None))
-        department = self._get_department_from_register_number(register_number)
+        department = self._get_department_from_register_number(
+            register_number,
+            validated_data.get('stream', instance.stream),
+        )
         validated_data.pop('academic_department_id', None)
 
         for attr, value in validated_data.items():
@@ -196,7 +206,6 @@ class StudentSerializer(serializers.ModelSerializer):
                 instance.user_id.email = email
             instance.user_id.password_hash = make_password(dob.isoformat()) if dob else instance.user_id.password_hash
             instance.user_id.role_id = role
-            instance.user_id.academic_department_id = department
             instance.user_id.is_active = bool(instance.status)
             instance.user_id.save()
 

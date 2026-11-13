@@ -1,11 +1,14 @@
 from django.test import TestCase
 from rest_framework import serializers
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from apps.accounts.models import Role, User
 from apps.departments.models import AcademicDepartment
 
 from .models import Student
 from .serializers import StudentSerializer
+from .views import StudentViewSet
 
 
 class StudentSerializerDepartmentTests(TestCase):
@@ -14,6 +17,14 @@ class StudentSerializerDepartmentTests(TestCase):
         self.department = AcademicDepartment.objects.create(
             code='CSE',
             stream='SFM',
+            degree='B.Sc',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
+        self.aided_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='Aided',
             degree='B.Sc',
             branch='Computer Science',
             type='UG',
@@ -39,7 +50,6 @@ class StudentSerializerDepartmentTests(TestCase):
         student = serializer.save()
 
         self.assertEqual(student.academic_department_id_id, self.department.id)
-        self.assertEqual(student.user_id.academic_department_id_id, self.department.id)
         self.assertEqual(student.user_id.username, '12CSE0001')
         self.assertTrue(User.objects.filter(username='12CSE0001').exists())
         self.assertTrue(Student.objects.filter(register_number='12CSE0001').exists())
@@ -63,7 +73,7 @@ class StudentSerializerDepartmentTests(TestCase):
         with self.assertRaises(serializers.ValidationError) as context:
             serializer.save()
 
-        self.assertIn('Department not found.', str(context.exception))
+        self.assertIn('Department not found for the selected stream.', str(context.exception))
 
     def test_create_student_accepts_aided_stream_value(self):
         serializer = StudentSerializer(
@@ -83,6 +93,7 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         student = serializer.save()
 
+        self.assertEqual(student.academic_department_id_id, self.aided_department.id)
         self.assertEqual(student.stream, 'AIDED')
         self.assertEqual(student.user_id.username, '12CSE0002')
         self.assertEqual(Student.objects.get(register_number='12CSE0002').stream, 'AIDED')
@@ -114,7 +125,6 @@ class StudentSerializerDepartmentTests(TestCase):
             email='existing.student@example.com',
             password_hash='hashed-password',
             role_id=self.student_role,
-            academic_department_id=self.department,
             is_active=True,
         )
 
@@ -138,7 +148,7 @@ class StudentSerializerDepartmentTests(TestCase):
             'A user with this email already exists.'
         )
 
-    def test_update_student_syncs_academic_department_to_user(self):
+    def test_update_student_derives_academic_department_from_register_number(self):
         serializer = StudentSerializer(
             data={
                 'register_number': '12CSE0003',
@@ -164,6 +174,14 @@ class StudentSerializerDepartmentTests(TestCase):
             type='UG',
             category='SCIENCE',
         )
+        updated_aided_department = AcademicDepartment.objects.create(
+            code='MTH',
+            stream='Aided',
+            degree='B.Sc',
+            branch='Mathematics',
+            type='UG',
+            category='SCIENCE',
+        )
 
         update_serializer = StudentSerializer(
             instance=student,
@@ -172,7 +190,7 @@ class StudentSerializerDepartmentTests(TestCase):
                 'name': 'Sync Student',
                 'year_of_admission': '2026',
                 'dob': '01-01-2006',
-                'stream': 'SFM',
+                'stream': 'Aided',
                 'mobile_number': '9876543212',
                 'status': False,
                 'academic_department_id': updated_department.id,
@@ -183,5 +201,113 @@ class StudentSerializerDepartmentTests(TestCase):
         self.assertTrue(update_serializer.is_valid(), update_serializer.errors)
         updated_student = update_serializer.save()
 
-        self.assertEqual(updated_student.academic_department_id_id, updated_department.id)
-        self.assertEqual(updated_student.user_id.academic_department_id_id, updated_department.id)
+        self.assertEqual(updated_student.academic_department_id_id, updated_aided_department.id)
+        self.assertEqual(updated_student.user_id.username, '12MTH0003')
+        
+
+class StudentViewSetGraduateFilterTests(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.student_role = Role.objects.create(name='STUDENT', description='Student role')
+        self.ug_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='SFM',
+            degree='B.Tech',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
+        self.pg_department = AcademicDepartment.objects.create(
+            code='MCS',
+            stream='SFM',
+            degree='M.Tech',
+            branch='Computer Science',
+            type='PG',
+            category='SCIENCE',
+        )
+        self.ug_student = Student.objects.create(
+            register_number='22CSE0001',
+            name='UG Student',
+            user_id=User.objects.create(
+                username='22CSE0001',
+                email='ug.student@example.com',
+                password_hash='hashed-password',
+                role_id=self.student_role,
+                is_active=True,
+            ),
+            academic_department_id=self.ug_department,
+            year_of_admission='2022',
+            stream='SFM',
+            mobile_number='9876543210',
+            status=True,
+        )
+        self.pg_student = Student.objects.create(
+            register_number='22MCS0001',
+            name='PG Student',
+            user_id=User.objects.create(
+                username='22MCS0001',
+                email='pg.student@example.com',
+                password_hash='hashed-password',
+                role_id=self.student_role,
+                is_active=True,
+            ),
+            academic_department_id=self.pg_department,
+            year_of_admission='2022',
+            stream='SFM',
+            mobile_number='9876543211',
+            status=True,
+        )
+
+    def test_get_queryset_filters_students_by_graduate_type(self):
+        request = self.factory.get('/students/', {'graduate': 'UG'})
+        view = StudentViewSet()
+        view.request = Request(request)
+
+        queryset = view.get_queryset()
+
+        self.assertEqual(list(queryset.values_list('id', flat=True)), [self.ug_student.id])
+
+        request = self.factory.get('/students/', {'graduate': 'PG'})
+        view = StudentViewSet()
+        view.request = Request(request)
+
+        queryset = view.get_queryset()
+
+        self.assertEqual(list(queryset.values_list('id', flat=True)), [self.pg_student.id])
+
+    def test_get_queryset_filters_all_stream_variants_of_department_code(self):
+        other_stream_department = AcademicDepartment.objects.create(
+            code='CSE',
+            stream='SFW',
+            degree='B.Tech',
+            branch='Computer Science',
+            type='UG',
+            category='SCIENCE',
+        )
+        other_stream_user = User.objects.create(
+            username='22CSE0002',
+            email='ug.student2@example.com',
+            password_hash='hashed-password',
+            role_id=self.student_role,
+            is_active=True,
+        )
+        other_stream_student = Student.objects.create(
+            register_number='22CSE0002',
+            name='UG Student Second Stream',
+            user_id=other_stream_user,
+            academic_department_id=other_stream_department,
+            year_of_admission='2022',
+            stream='SFW',
+            mobile_number='9876543212',
+            status=True,
+        )
+        request = self.factory.get('/students/', {'academic_department_code': 'CSE'})
+        view = StudentViewSet()
+        view.request = Request(request)
+
+        queryset = view.get_queryset()
+
+        self.assertCountEqual(
+            queryset.values_list('id', flat=True),
+            [self.ug_student.id, other_stream_student.id],
+        )
