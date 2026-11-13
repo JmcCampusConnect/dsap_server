@@ -13,7 +13,6 @@ class ServiceDepartment(models.Model):
     payment_reminder_days = models.PositiveSmallIntegerField(null=True, blank=True)
     payment_max_reminders = models.PositiveSmallIntegerField(default=3)
     hod_user_id = models.ForeignKey(
-        # 'common.User',
         'accounts.User',
         on_delete=models.RESTRICT,
         null=True,

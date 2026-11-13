@@ -37,22 +37,8 @@ def run() -> dict[str, Any]:
             "department_code": "MCA",
             "department_stream": "SFM"
         },
-        {
-            "register_number": "24MCA057",
-            "name": "Abdul Rasak",
-            "email": "student057@example.com",
-            "dob": date(2001, 1, 12),
-            "year_of_admission": "2024",
-            "section": "A",
-            "stream": "SFM",
-            "mobile_number": "9123456780",
-            "status": True,
-            "department_code": "MCA",
-            "department_stream": "SFM"
-        },
     ]
 
-    # Get or create the STUDENT role
     student_role, _ = Role.objects.get_or_create(
         name="STUDENT",
         defaults={"description": "Student"}
