@@ -143,6 +143,27 @@ class StaffProfileReadTests(ProfileAPITestBase):
         self.assertIsNone(self.client.get(self.url).data["academic_department"])
 
 
+class SystemAdminProfileReadTests(ProfileAPITestBase):
+    def setUp(self):
+        super().setUp()
+        self.system_admin_role = Role.objects.create(name="SYSTEM_ADMIN")
+        self.system_admin_user = User.objects.create(
+            username="SYSTEM_ADMIN",
+            email="admin@example.com",
+            password_hash="x",
+            role_id=self.system_admin_role,
+            is_active=True,
+        )
+        self.auth(self.system_admin_user)
+
+    def test_profile_has_no_academic_department_without_student_record(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["role"], "SYSTEM_ADMIN")
+        self.assertIsNone(response.data["academic_department"])
+
+
 # ---------------------------------------------------------------------
 # PATCH — Student happy path + audit
 # ---------------------------------------------------------------------

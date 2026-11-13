@@ -184,7 +184,7 @@ class ProfileView(APIView):
         fresh_user = (
             User.objects
             .select_related(
-                "role_id", "service_department_id", "academic_department_id"
+                "role_id", "service_department_id", "student__academic_department_id"
             )
             .get(pk=user.pk)
         )

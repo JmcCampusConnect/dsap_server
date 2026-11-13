@@ -94,7 +94,10 @@ class StaffProfileSerializer(serializers.ModelSerializer):
         return {"id": dept.id, "code": dept.code, "name": dept.name}
 
     def get_academic_department(self, obj):
-        dept = obj.academic_department_id
+        try:
+            dept = obj.student.academic_department_id
+        except Student.DoesNotExist:
+            return None
         if not dept:
             return None
         return {
