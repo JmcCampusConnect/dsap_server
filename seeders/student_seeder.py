@@ -23,52 +23,27 @@ def run() -> dict[str, Any]:
 
     print("\nSeeding students...\n")
 
-    fixtures = [
-        ("24MCA066", "2024", "A", "AIDED", True, "MCA", "Aided", date(2002, 2, 6)),
-        ("24UCS067", "2024", "A", "SFM", True, "UCS", "SFM", date(2005, 3, 7)),
-        ("23PEN068", "2023", "B", "SFW", False, "PEN", "SFW", date(2002, 4, 8)),
-        ("24UCO069", "2024", "B", "AIDED", False, "UCO", "Aided", date(2005, 5, 9)),
-        ("23PMA070", "2023", "A", "AIDED", True, "PMA", "Aided", date(2001, 6, 10)),
-        ("22UAR071", "2022", "C", "SFW", True, "UAR", "SFW", date(2004, 7, 11)),
-        ("24PEN072", "2024", "B", "AIDED", True, "PEN", "Aided", date(2002, 8, 12)),
-        ("23UBO073", "2023", "C", "AIDED", False, "UBO", "Aided", date(2004, 9, 13)),
-        ("22MCA074", "2022", "D", "SFM", True, "MCA", "SFM", date(2000, 10, 14)),
-        ("22UCS075", "2022", "A", "SFW", True, "UCS", "SFW", date(2003, 11, 15)),
-        ("25MCA076", "2025", "B", "AIDED", True, "MCA", "Aided", date(2003, 1, 16)),
-        ("25UAR077", "2025", "C", "AIDED", False, "UAR", "Aided", date(2007, 2, 17)),
-        ("25UCO078", "2025", "D", "SFM", False, "UCO", "SFM", date(2007, 3, 18)),
-        ("24PEN079", "2024", "C", "SFW", True, "PEN", "SFW", date(2003, 4, 19)),
-        ("23UCS080", "2023", "D", "SFM", False, "UCS", "SFM", date(2006, 5, 20)),
-        ("22PMA081", "2022", "B", "AIDED", True, "PMA", "Aided", date(2000, 6, 21)),
-        ("25UCO082", "2025", "A", "SFW", True, "UCO", "SFW", date(2007, 7, 22)),
-        ("24MCA083", "2024", "D", "SFM", False, "MCA", "SFM", date(2002, 8, 23)),
-        ("23UCO084", "2023", "B", "AIDED", True, "UCO", "Aided", date(2005, 9, 24)),
-        ("25PEN085", "2025", "C", "SFW", False, "PEN", "SFW", date(2003, 10, 25)),
-    ]
     students_data = [
         {
-            "register_number": register_number,
-            "name": f"Demo Student {register_number[-3:]}",
-            "email": f"student{register_number[-3:]}@example.com",
-            "dob": dob,
-            "year_of_admission": year_of_admission,
-            "section": section,
-            "stream": stream,
-            "mobile_number": f"98765{int(register_number[-3:]):05d}",
-            "status": is_active,
-            "department_code": department_code,
-            "department_stream": department_stream,
-        }
-        for (
-            register_number,
-            year_of_admission,
-            section,
-            stream,
-            is_active,
-            department_code,
-            department_stream,
-            dob,
-        ) in fixtures
+            "register_number": "24MCA066",
+            "name": "Mohamed Jainul Haneef M I",
+            "email": "student066@example.com",
+            "dob": date(2000, 4, 1),
+            "year_of_admission": "2024",
+            "section": "A",
+            "mobile_number": "9876543213",
+            "status": True,
+        },
+        {
+            "register_number": "24MCA057",
+            "name": "Abdul Rasak",
+            "email": "student057@example.com",
+            "dob": date(2001, 1, 12),
+            "year_of_admission": "2024",
+            "section": "A",
+            "mobile_number": "9123456780",
+            "status": True,
+        },
     ]
 
     # Get or create the STUDENT role
