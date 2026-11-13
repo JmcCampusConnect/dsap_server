@@ -3,6 +3,21 @@ from apps.departments.models import ServiceDepartment
 from apps.accounts.role_constants import Roles
 
 
+class ServiceDepartmentOfficeDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceDepartment
+        fields = [
+            "id",
+            "office_address",
+            "office_hours",
+            "contact_phone",
+            "payment_due_days",
+            "payment_reminder_days",
+            "payment_max_reminders",
+        ]
+        read_only_fields = ["id"]
+
+
 class ServiceDepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceDepartment
@@ -10,6 +25,12 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
             "id",
             "code",
             "name",
+            "office_address",
+            "office_hours",
+            "contact_phone",
+            "payment_due_days",
+            "payment_reminder_days",
+            "payment_max_reminders",
             "hod_user_id",
             "status",
         ]
@@ -62,7 +83,16 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
         # If user is NOT System Admin, restrict fields
         if user and not user.is_system_admin():
             # Dept Admin can only update name and hod_user_id (profile fields)
-            allowed_fields = {'name', 'hod_user_id'}
+            allowed_fields = {
+                'name',
+                'hod_user_id',
+                'office_address',
+                'office_hours',
+                'contact_phone',
+                'payment_due_days',
+                'payment_reminder_days',
+                'payment_max_reminders',
+            }
             for field in list(validated_data.keys()):
                 if field not in allowed_fields:
                     validated_data.pop(field, None)

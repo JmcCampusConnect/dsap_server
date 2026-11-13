@@ -96,25 +96,10 @@ class RequestDocumentSerializer(serializers.ModelSerializer):
             'file_path',
             'file_hash',
             'verification_status',
+            'rejection_remarks',
             'created_at',
             'updated_at',
         ]
-
-class PaymentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Payment
-        fields = [
-            'id',
-            'request_id',
-            'amount',
-            'gateway_txn_id',
-            'payment_method',
-            'payment_status',
-            'paid_at',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = fields
 
 class WorkflowHistorySerializer(serializers.ModelSerializer):
     step_name = serializers.SerializerMethodField()
@@ -160,7 +145,8 @@ class WorkflowHistorySerializer(serializers.ModelSerializer):
 
 class RequestNotificationSerializer(serializers.ModelSerializer):
     event_code = serializers.CharField(source='template_id.event_code', read_only=True)
-    template_body = serializers.CharField(source='template_id.template_body', read_only=True)
+    template_body = serializers.SerializerMethodField()
+    subject = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
@@ -168,11 +154,18 @@ class RequestNotificationSerializer(serializers.ModelSerializer):
             'id',
             'channel',
             'event_code',
+            'subject',
             'template_body',
             'status',
             'sent_at',
             'created_at',
         ]
+
+    def get_template_body(self, obj):
+        return obj.message or obj.template_id.template_body
+
+    def get_subject(self, obj):
+        return obj.subject or obj.template_id.subject
 
 # 3. COMPOSITE SERIALIZERS
 class MyRequestListSerializer(serializers.ModelSerializer):
@@ -182,7 +175,8 @@ class MyRequestListSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     current_step_name = serializers.SerializerMethodField()
     assigned_role = serializers.SerializerMethodField()
-    base_fee = serializers.DecimalField(source='service_id.base_fee', max_digits=10, decimal_places=2, read_only=True)
+    base_fee = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
@@ -197,6 +191,7 @@ class MyRequestListSerializer(serializers.ModelSerializer):
             'current_step_name',
             'assigned_role',
             'base_fee',
+            'payment_status',
             'submitted_at',
             'completed_at',
             'created_at',
@@ -217,6 +212,20 @@ class MyRequestListSerializer(serializers.ModelSerializer):
             return obj.current_step_id.responsible_role_id.name
         return None
 
+    def get_base_fee(self, obj):
+        try:
+            if obj.current_status != 'DRAFT':
+                return str(obj.payment.amount)
+        except Payment.DoesNotExist:
+            pass
+        return str(obj.service_id.base_fee)
+
+    def get_payment_status(self, obj):
+        try:
+            return obj.payment.payment_status
+        except Payment.DoesNotExist:
+            return None
+
 
 class MyRequestDetailSerializer(serializers.ModelSerializer):
     service = serializers.SerializerMethodField()
@@ -229,6 +238,7 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
     notifications = serializers.SerializerMethodField()
     can_resume_draft = serializers.SerializerMethodField()
     can_resubmit = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
@@ -248,6 +258,7 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
             'documents',
             'timeline',
             'notifications',
+            'payment',
             'can_resume_draft',
             'can_resubmit',
         ]
@@ -266,6 +277,11 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
                 'id': dept.id if dept else None,
                 'code': dept.code if dept else None,
                 'name': dept.name if dept else None,
+                'office_address': dept.office_address if dept else '',
+                'office_hours': dept.office_hours if dept else '',
+                'contact_phone': dept.contact_phone if dept else '',
+                'payment_due_days': dept.payment_due_days if dept else None,
+                'payment_reminder_days': dept.payment_reminder_days if dept else None,
             } if dept else None,
         }
 
@@ -317,3 +333,12 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
 
     def get_can_resubmit(self, obj):
         return obj.current_status == 'RETURNED'
+
+    def get_payment(self, obj):
+        try:
+            payment = obj.payment
+        except Payment.DoesNotExist:
+            return None
+        from apps.payments.serializers import PaymentDetailSerializer
+
+        return PaymentDetailSerializer(payment).data
