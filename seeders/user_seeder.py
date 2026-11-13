@@ -79,8 +79,8 @@ def run() -> dict[str, Any]:
         },
         {
             "role": "STUDENT",
-            "username": "24MCA057",
-            "email": "student057@example.com",
+            "username": "25MCA074",
+            "email": "mohamedsiddiq7504@example.com",
             "service_department_code": None,
         },
     ]

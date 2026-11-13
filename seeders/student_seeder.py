@@ -50,6 +50,19 @@ def run() -> dict[str, Any]:
             "department_code": "MCA",
             "department_stream": "SFM"
         },
+        {
+            "register_number": "25MCA074",
+            "name": "Mohamed Siddiq",
+            "email": "mohamedsiddiq7504@gmail.com",
+            "dob": date(2005, 3, 18),
+            "year_of_admission": "2025",
+            "section": "A",
+            "stream": "SFM",
+            "mobile_number": "8072047789",
+            "status": True,
+            "department_code": "MCA",
+            "department_stream": "SFM"
+        }
     ]
 
     # Get or create the STUDENT role

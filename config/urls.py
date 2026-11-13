@@ -10,6 +10,9 @@ urlpatterns = [
     # Accounts 
     path("api/auth/", include("apps.accounts.urls.auth")),
     path("api/users/", include("apps.accounts.urls.user")),
+    
+    # Profile
+    path("api/profile/", include("apps.profile.urls")),
 
     # Departments
     path("api/service-departments/",include("apps.departments.urls.service_department"),),
