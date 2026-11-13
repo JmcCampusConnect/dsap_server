@@ -31,8 +31,11 @@ def run() -> dict[str, Any]:
             "dob": date(2000, 4, 1),
             "year_of_admission": "2024",
             "section": "A",
+            "stream": "SFM",
             "mobile_number": "9876543213",
             "status": True,
+            "department_code": "MCA",
+            "department_stream": "SFM"
         },
         {
             "register_number": "24MCA057",
@@ -41,8 +44,11 @@ def run() -> dict[str, Any]:
             "dob": date(2001, 1, 12),
             "year_of_admission": "2024",
             "section": "A",
+            "stream": "SFM",
             "mobile_number": "9123456780",
             "status": True,
+            "department_code": "MCA",
+            "department_stream": "SFM"
         },
     ]
 
