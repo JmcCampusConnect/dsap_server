@@ -5,7 +5,6 @@ A production-oriented Django backend for the Digital Academic Service Platform, 
 ![Django](https://img.shields.io/badge/Django-5+-092E20?logo=django)
 ![Django REST Framework](https://img.shields.io/badge/DRF-3.15+-ff1709?logo=django)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?logo=postgresql)
-![Celery](https://img.shields.io/badge/Celery-5+-37814A?logo=celery)
 
 > This guide complements the frontend documentation and database design references for the full DASP stack.
 
@@ -21,7 +20,7 @@ A production-oriented Django backend for the Digital Academic Service Platform, 
 - [Technology Stack](#technology-stack)
 - [Django Architecture & Patterns](#django-architecture--patterns)
 - [API Design](#api-design)
-- [Background Jobs (Celery)](#background-jobs-celery)
+- [Background Jobs](#background-jobs-celery)
 - [Security](#security)
 - [Testing](#testing)
 - [Git Workflow](#git-workflow)
@@ -43,7 +42,6 @@ This guide covers everything needed to build and operate the DASP backend, inclu
 
 - Python 3.12 or later
 - PostgreSQL 15+
-- Redis (Celery broker and result backend)
 - Git
 
 ---
@@ -73,17 +71,7 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-In a separate terminal, start the Celery worker:
-
-```bash
-celery -A config worker -l info
-```
-
-If you use scheduled tasks, also start the Celery beat scheduler:
-
-```bash
-celery -A config beat -l info
-```
+This checkout does not currently include a Celery app or dependency. The offline payment reminder command below is intended to be invoked by the deployment's operating-system scheduler.
 
 The API runs at `http://localhost:8000/api/v1` by default.
 
@@ -99,9 +87,6 @@ SECRET_KEY=change-me
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 DATABASE_URL=postgres://dasp:dasp@localhost:5432/dasp
-
-REDIS_URL=redis://localhost:6379/0
-CELERY_BROKER_URL=redis://localhost:6379/1
 
 JWT_ACCESS_TOKEN_LIFETIME_MIN=15
 JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
@@ -148,8 +133,8 @@ dasp-server/
 │   ├── workflow/                 # Workflow steps, routing engine
 │   ├── requests/                 # Request lifecycle, field values
 │   ├── documents/                # Upload, virus scan, storage
-│   ├── payments/                 # Gateway integration, webhooks
-│   ├── notifications/            # Templates, SMS/email (Celery)
+│   ├── payments/                 # Offline challan verification and reminders
+│   ├── notifications/            # In-app notification records and templates
 │   ├── audit/                    # AuditLog
 │   └── reports/                  # Report queries, PDF/Excel export
 │
@@ -158,11 +143,6 @@ dasp-server/
 │   ├── exceptions.py
 │   ├── pagination.py
 │   └── validators.py
-│
-├── celery_app/
-│   ├── __init__.py
-│   ├── celery.py
-│   └── tasks.py
 │
 ├── seeders/                      # Lightweight database seeders
 │   ├── __init__.py
@@ -220,8 +200,7 @@ Create a new file in the `seeders/` folder, follow the existing `role_seeder.py`
 | Web framework | Django | 5+ |
 | API framework | Django REST Framework | 3.15+ |
 | Database | PostgreSQL | 15+ |
-| Cache / broker | Redis | 7+ |
-| Background jobs | Celery | 5+ |
+| Background jobs | Django management commands + OS scheduler | Built in |
 | Auth | JWT (SimpleJWT) + OTP | Latest |
 | WSGI/ASGI server | Gunicorn / Uvicorn | Latest |
 | Testing | pytest-django + factory_boy | Latest |
@@ -343,20 +322,26 @@ class IsServiceDepartmentStaffForRequest(BasePermission):
 
 ## Background Jobs (Celery)
 
-- Notifications, report generation, and PDF certificate rendering run as Celery tasks rather than inline in the request/response cycle.
-- Every task is idempotent, so it is safe to retry without side effects such as duplicate notifications.
-- Tasks retry with exponential backoff (default: 3 retries) and log failures to `AuditLog` where they affect a specific record.
+Celery is not configured in this checkout. Payment lifecycle notifications are persisted as in-app notifications after the related database transaction commits.
 
-```python
-# apps/notifications/tasks.py
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def send_notification(self, notification_id):
-    try:
-        notification = Notification.objects.get(pk=notification_id)
-        # ... send via the configured channel ...
-    except TransientGatewayError as exc:
-        raise self.retry(exc=exc)
+### Offline payment reminders
+
+Run this Django management command daily from the backend directory:
+
+```powershell
+python manage.py send_payment_reminders
 ```
+
+For Windows deployments, create a Windows Task Scheduler task that runs the command with the backend virtual-environment Python executable and sets the working directory to `dsap_server`. On Linux, schedule the equivalent command with cron or the platform scheduler.
+
+Department admins configure the payment due period, reminder interval, and maximum reminder count in **Department Office Details**. An unset reminder interval or a maximum of zero disables reminders. The command creates in-app reminders only; no email or SMS gateway is configured.
+
+### Offline payment API
+
+- `POST /api/requests/{id}/submit/` requires `offline_payment_acknowledged: true` for paid services.
+- `GET /api/payments/pending/` lists pending or issue-state payments for authorized staff.
+- `GET /api/payments/{id}/`, `POST /api/payments/{id}/confirm/`, and `POST /api/payments/{id}/reject/` provide scoped review, confirmation, and rejection.
+- `GET/PATCH /api/service-departments/{id}/office-details/` reads and updates department challan instructions and reminder settings.
 
 ---
 
@@ -586,7 +571,6 @@ Use Squash and Merge on GitHub. Each PR becomes a single commit on `development`
 | --- | --- |
 | The API fails to start | Verify the virtual environment is active and dependencies are installed |
 | Database connection errors | Check PostgreSQL is running and `DATABASE_URL` is correct |
-| Celery worker issues | Confirm Redis is available and `CELERY_BROKER_URL` is set properly |
 | CORS errors in local development | Ensure `CORS_ALLOWED_ORIGINS` includes the frontend origin |
 
 ---

@@ -289,7 +289,8 @@ class DeptQueueDetailSerializer(serializers.ModelSerializer):
         payment = Payment.objects.filter(request_id=obj).first()
         if not payment:
             return None
-        return QueuePaymentSerializer(payment).data
+        from apps.payments.serializers import PaymentDetailSerializer
+        return PaymentDetailSerializer(payment).data
 
     def get_allowed_actions(self, obj):
         step = obj.current_step_id

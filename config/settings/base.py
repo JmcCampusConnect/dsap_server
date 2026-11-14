@@ -84,13 +84,14 @@ CSP_SCRIPT_SRC = ("'self'",)
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com")
 CSP_IMG_SRC = ("'self'", "data:")
-CSP_CONNECT_SRC = ("'self'", "https://api.yourcollege.edu")  # ! CRITICAL: Must include our backend domain
+CSP_CONNECT_SRC = ("'self'", "https://api.yourcollege.edu") 
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_BASE_URI = ("'self'",)
 CSP_FORM_ACTION = ("'self'",)
 
 # Start with Report-Only mode as recommended in the guide
-CSP_REPORT_ONLY = True  # Set to False after validating violations
+# Set to False after validating violations
+CSP_REPORT_ONLY = True  
 CSP_REPORT_URI = "/api/csp-report/"
 
 WSGI_APPLICATION = 'config.wsgi.application'

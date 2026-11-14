@@ -51,14 +51,14 @@ def run() -> dict[str, Any]:
             "username": "COE_STAFF",
             "email": "coe.staff@example.com",
             "service_department_code": "COE",
-        },        
+        },
         # ── Students ──────────────────────────────────────────────────
         {
             "role": "STUDENT",
             "username": "24MCA066",
             "email": "student066@example.com",
             "service_department_code": None,
-        },
+        }
     ]
 
     role_cache = {}

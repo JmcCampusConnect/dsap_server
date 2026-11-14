@@ -4,13 +4,16 @@ from django.db import transaction
 
 try:
     from apps.accounts.models import Role
+    from apps.requests.models import Request
     from apps.services.models import Service
-    from apps.workflow.models import WorkflowStep
+    from apps.workflow.models import WorkflowHistory, WorkflowStep
     from apps.workflow.constants import AllowedActions, WorkflowStepKinds
     HAS_MODELS = True
 except Exception as exc:
     Role = None
+    Request = None
     Service = None
+    WorkflowHistory = None
     WorkflowStep = None
     AllowedActions = None
     HAS_MODELS = False
@@ -63,7 +66,7 @@ SERVICE_WORKFLOWS = {
 
 def run() -> dict[str, Any]:
     
-    """Seed the default four-step workflow for the five COE services."""
+    """Seed the workflow for five COE services, prepending payment for paid services."""
     if not HAS_MODELS:
         return {"created": 0, "existing": 0, "skipped": True}
 
@@ -82,9 +85,34 @@ def run() -> dict[str, Any]:
                 continue
 
             # Clear existing steps for this service
+            if WorkflowHistory is not None:
+                WorkflowHistory.objects.filter(step_id__service_id=service).delete()
+            if Request is not None:
+                Request.objects.filter(current_step_id__service_id=service).update(current_step_id=None)
             WorkflowStep.objects.filter(service_id=service).delete()
 
-            for step_data in steps:
+            configured_steps = []
+            if service.base_fee > 0:
+                configured_steps.append({
+                    "step_order": 1,
+                    "step_name": "Payment Verification",
+                    "step_kind": WorkflowStepKinds.PAYMENT_VERIFY,
+                    "responsible_role": "SERVICE_DEPT_STAFF",
+                    "allowed_actions": [
+                        AllowedActions.CONFIRM_PAYMENT,
+                        AllowedActions.REJECT_PAYMENT,
+                    ],
+                })
+            payment_step_offset = len(configured_steps)
+            configured_steps.extend(
+                {
+                    **step_data,
+                    "step_order": step_data["step_order"] + payment_step_offset,
+                }
+                for step_data in steps
+            )
+
+            for step_data in configured_steps:
                 role = roles.get(step_data["responsible_role"])
                 if not role:
                     print(f"  Warning: Role '{step_data['responsible_role']}' not found. Skipping step '{step_data['step_name']}'.")
@@ -100,7 +128,7 @@ def run() -> dict[str, Any]:
                 )
                 total_created += 1
 
-            print(f"  Configured {len(steps)} workflow steps for {service.code} ({service.name})")
+            print(f"  Configured {len(configured_steps)} workflow steps for {service.code} ({service.name})")
 
     print(f"\nWorkflowStep seeding completed. Total steps configured: {total_created}")
     return {"created": total_created, "existing": 0, "skipped": False}

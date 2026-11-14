@@ -13,7 +13,11 @@ import openpyxl
 from apps.departments.models import ServiceDepartment
 from apps.departments.serializers import ServiceDepartmentSerializer
 from apps.accounts.models import User
-from apps.accounts.permissions import IsSystemAdmin, IsOwnServiceDepartment
+from apps.accounts.permissions import (
+    CanManageServiceDepartment,
+    IsSystemAdmin,
+    IsOwnServiceDepartment,
+)
 from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from common.pagination import StandardPagination
@@ -25,7 +29,7 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        
+
         # Start with base queryset with search/filter capabilities
         qs = ServiceDepartment.objects.all().order_by("code")
         
@@ -33,13 +37,18 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         # For service department roles, we'll filter by their department after applying search
         search = self.request.query_params.get("search", "").strip()
         if search:
-            qs = qs.filter(
+            search_filter = (
                 Q(code__icontains=search)
                 | Q(name__icontains=search)
-                | Q(status__icontains=search)
                 | Q(hod_user_id__username__icontains=search)
                 | Q(hod_user_id__email__icontains=search)
             )
+            normalized_search = search.lower()
+            if normalized_search in {"active", "true", "inactive", "false"}:
+                search_filter |= Q(
+                    status=normalized_search in {"active", "true"}
+                )
+            qs = qs.filter(search_filter)
 
         code = self.request.query_params.get("code", "").strip()
         if code:
@@ -51,7 +60,18 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
         status_param = self.request.query_params.get("status", "").strip().lower()
         if status_param:
-            qs = qs.filter(status__iexact=status_param)
+            status_values = {
+                "true": True,
+                "1": True,
+                "active": True,
+                "false": False,
+                "0": False,
+                "inactive": False,
+            }
+            if status_param in status_values:
+                qs = qs.filter(status=status_values[status_param])
+            else:
+                qs = qs.none()
 
         hod_user_id = self.request.query_params.get("hod_user_id", "").strip()
         if hod_user_id:
@@ -76,8 +96,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         # Create, destroy: only System Admin
         if self.action in ['create', 'destroy']:
             return [IsAuthenticated(), IsSystemAdmin()]
-        # Update, partial_update: System Admin (full) or Dept Admin (restricted via serializer)
-        return [IsAuthenticated(), IsOwnServiceDepartment()]
+        # Department profiles can only be changed by system or department admins.
+        return [IsAuthenticated(), CanManageServiceDepartment()]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -96,8 +116,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
         changes = {}
         status_changed = False
-        old_status = old_data.get('status', '').lower()
-        new_status = new_data.get('status', '').lower()
+        old_status = old_data.get('status')
+        new_status = new_data.get('status')
         
         for key, new_value in new_data.items():
             old_value = old_data.get(key)
@@ -108,9 +128,9 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
 
         # Log as ACTIVATE or DEACTIVATE if only status is changing
         if status_changed and len(changes) == 1:
-            if old_status == 'active' and new_status == 'inactive':
+            if old_status is True and new_status is False:
                 action = "DEACTIVATE"
-            elif old_status == 'inactive' and new_status == 'active':
+            elif old_status is False and new_status is True:
                 action = "ACTIVATE"
             else:
                 action = "UPDATE"
@@ -130,7 +150,7 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
         snapshot = self.get_serializer(department).data
         object_id = department.pk
 
-        department.status = "inactive"
+        department.status = False
         department.save(update_fields=["status", "updated_at"])
 
         AuditLog.log(
@@ -195,8 +215,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
             "names": [{"value": n, "label": n} for n in names],
             "hods": hod_options,
             "statuses": [
-                {"value": "active", "label": "Active"},
-                {"value": "inactive", "label": "Inactive"},
+                {"value": "true", "label": "Active"},
+                {"value": "false", "label": "Inactive"},
             ],
         })
 
@@ -217,7 +237,7 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
                 department.code,
                 department.name,
                 hod_username,
-                department.status.lower(),
+                str(department.status).lower(),
             ])
 
         response = HttpResponse(
@@ -281,7 +301,19 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
             code = str(row[0]).strip().upper() if row[0] is not None else ""
             name = str(row[1]).strip() if row[1] is not None else ""
             hod_username = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-            status_value = str(row[3]).strip().lower() if len(row) > 3 and row[3] is not None else "active"
+            status_value = (
+                str(row[3]).strip().lower()
+                if len(row) > 3 and row[3] is not None
+                else "true"
+            )
+            status_values = {
+                "true": True,
+                "1": True,
+                "active": True,
+                "false": False,
+                "0": False,
+                "inactive": False,
+            }
 
             row_errors = []
             if not code:
@@ -300,8 +332,8 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
             elif len(name) > 150:
                 row_errors.append("Department Name exceeds the maximum allowed length.")
 
-            if status_value not in {"active", "inactive"}:
-                row_errors.append("Status must be active or inactive.")
+            if status_value not in status_values:
+                row_errors.append("Status must be true or false.")
 
             hod_user_obj = None
             if hod_username:
@@ -322,7 +354,7 @@ class ServiceDepartmentViewSet(viewsets.ModelViewSet):
                         code=code,
                         name=name,
                         hod_user_id=hod_user_obj,
-                        status=status_value,
+                        status=status_values.get(status_value, True),
                     )
                 )
 

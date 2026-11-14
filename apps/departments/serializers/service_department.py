@@ -1,4 +1,5 @@
 from rest_framework import serializers
+
 from apps.departments.models import ServiceDepartment
 from apps.accounts.role_constants import Roles
 
@@ -43,9 +44,6 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate_status(self, value):
-        return value.lower()
-
     def create(self, validated_data):
         department = ServiceDepartment.objects.create(**validated_data)
 
@@ -62,7 +60,10 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
         # If user is NOT System Admin, restrict fields
         if user and not user.is_system_admin():
             # Dept Admin can only update name and hod_user_id (profile fields)
-            allowed_fields = {'name', 'hod_user_id'}
+            allowed_fields = {
+                'name',
+                'hod_user_id',
+            }
             for field in list(validated_data.keys()):
                 if field not in allowed_fields:
                     validated_data.pop(field, None)

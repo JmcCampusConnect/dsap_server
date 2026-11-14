@@ -89,13 +89,15 @@ class DepartmentQueueTestCase(TestCase):
     # 4. Users cannot act on workflow steps they are not authorized to handle
     # ----------------------------------------------------------------------
     def test_04_users_cannot_act_on_unauthorized_workflow_steps(self):
-        # REQ-2026-0002 is at Step 4 (responsible role: SERVICE_DEPT_STAFF)
+        # Model an admin-owned issuance step so staff are forbidden from acting on it.
         req_issuance_step = Request.objects.get(request_number="REQ-2026-0002")
+        issuance_step = req_issuance_step.current_step_id
+        issuance_step.responsible_role_id = self.coe_admin.role_id
+        issuance_step.save(update_fields=["responsible_role_id", "updated_at"])
         self.client.force_authenticate(user=self.coe_staff)
-        # Staff attempting forward on admin step
         res = self.client.post(
             f"/api/department-queue/{req_issuance_step.id}/issue/",
-            data={"remarks": "Staff trying to forward admin step"},
+            data={"remarks": "Staff trying to issue an admin-owned step"},
             format="json",
             HTTP_HOST="localhost",
         )
@@ -139,11 +141,11 @@ class DepartmentQueueTestCase(TestCase):
         req = Request.objects.get(request_number="REQ-2026-0001")
         completion_step = WorkflowStep.objects.get(
             service_id=req.service_id,
-            step_order=3,
+            step_order=4,
         )
         issuance_step = WorkflowStep.objects.get(
             service_id=req.service_id,
-            step_order=4,
+            step_order=5,
         )
         req.current_step_id = completion_step
         req.current_status = "PROCESSING"
@@ -232,7 +234,7 @@ class DepartmentQueueTestCase(TestCase):
         )
         self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
         req.refresh_from_db()
-        self.assertEqual(req.current_step_id.step_order, 2)
+        self.assertEqual(req.current_step_id.step_order, 3)
         self.assertEqual(req.current_status, "PROCESSING")
 
     # ----------------------------------------------------------------------
@@ -468,7 +470,6 @@ class DepartmentQueueTestCase(TestCase):
                         b"".join(response.streaming_content),
                         b"%PDF-1.4 test document",
                     )
-                    response.close()
         finally:
             doc.file_path = original_path
             doc.save(update_fields=["file_path"])

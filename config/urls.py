@@ -29,6 +29,8 @@ urlpatterns = [
 
     # Requests
     path("api/requests/", include("apps.requests.urls")),
+    path("api/payments/", include("apps.payments.urls")),
+    path("api/notifications/", include("apps.notifications.urls")),
 
     # Department Queue (staff workflow management)
     path("api/department-queue/", include("apps.department_queue.urls")),

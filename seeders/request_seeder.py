@@ -7,6 +7,7 @@ try:
     from apps.accounts.models import User
     from apps.documents.models import Document
     from apps.notifications.models import Notification, NotificationTemplate
+    from apps.payments.models import Payment, PaymentStatuses
     from apps.requests.models import Request, RequestFieldValue
     from apps.services.models import Service, ServiceDocument, ServiceField
     from apps.students.models import Student
@@ -46,11 +47,14 @@ def run() -> dict[str, Any]:
 
     # 3. Fetch workflow steps by service
     steps_by_service: dict[str, dict[int, WorkflowStep]] = {}
+    payment_step_offset = {}
     for step in WorkflowStep.objects.select_related("service_id").all():
         s_code = step.service_id.code
         if s_code not in steps_by_service:
             steps_by_service[s_code] = {}
         steps_by_service[s_code][step.step_order] = step
+        if step.step_kind == "PAYMENT_VERIFY":
+            payment_step_offset[s_code] = 1
 
     # 4. Ensure notification templates
     template_submitted, _ = NotificationTemplate.objects.get_or_create(
@@ -311,7 +315,10 @@ def run() -> dict[str, Any]:
     with transaction.atomic():
         for item in requests_config:
             service = services[item["service_code"]]
-            step = steps_by_service.get(service.code, {}).get(item["step_order"]) if item["step_order"] else None
+            step_order = item["step_order"]
+            if step_order and service.base_fee > 0:
+                step_order += payment_step_offset.get(service.code, 0)
+            step = steps_by_service.get(service.code, {}).get(step_order) if step_order else None
 
             req, is_created = Request.objects.update_or_create(
                 request_number=item["request_number"],
@@ -329,6 +336,15 @@ def run() -> dict[str, Any]:
                 created_count += 1
             else:
                 updated_count += 1
+
+            Payment.objects.update_or_create(
+                request_id=req,
+                defaults={
+                    "amount": service.base_fee,
+                    "payment_status": PaymentStatuses.SUCCESS,
+                    "amount_received": service.base_fee,
+                },
+            )
 
             # Populate RequestFieldValue records
             service_fields = {f.field_label: f for f in ServiceField.objects.filter(service_id=service)}
@@ -359,7 +375,10 @@ def run() -> dict[str, Any]:
             # Populate WorkflowHistory records
             WorkflowHistory.objects.filter(request_id=req).delete()
             for action_name, remarks, action_time, action_user, h_step_order in item["history"]:
-                h_step = steps_by_service.get(service.code, {}).get(h_step_order) if h_step_order else None
+                history_step_order = h_step_order
+                if history_step_order and service.base_fee > 0:
+                    history_step_order += payment_step_offset.get(service.code, 0)
+                h_step = steps_by_service.get(service.code, {}).get(history_step_order) if history_step_order else None
                 h_entry = WorkflowHistory.objects.create(
                     request_id=req,
                     step_id=h_step,
