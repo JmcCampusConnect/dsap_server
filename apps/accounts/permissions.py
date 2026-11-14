@@ -110,3 +110,59 @@ class IsSelfOrSystemAdmin(permissions.BasePermission):
         if request.user.is_system_admin():
             return True
         return IsSelfStudent().has_object_permission(request, view, obj)
+
+
+class CanVerifyPayment(permissions.BasePermission):
+    """Scope payment reads and verification writes to the owning student/department."""
+
+    READ_ROLES = (
+        Roles.SYSTEM_ADMIN,
+        Roles.SERVICE_DEPT_ADMIN,
+        Roles.SERVICE_DEPT_STAFF,
+        Roles.STUDENT,
+    )
+    VERIFY_ROLES = (Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF)
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated or not user.is_active:
+            return False
+        allowed_roles = self.READ_ROLES if request.method in permissions.SAFE_METHODS else self.VERIFY_ROLES
+        return user.role_name in allowed_roles
+
+    def has_object_permission(self, request, view, payment):
+        user = request.user
+        request_obj = payment.request_id
+        if user.role_name == Roles.SYSTEM_ADMIN:
+            return request.method in permissions.SAFE_METHODS
+        if user.role_name == Roles.STUDENT:
+            return request_obj.student_id.user_id_id == user.id
+        if user.role_name in self.VERIFY_ROLES:
+            return (
+                user.service_department_id_id is not None
+                and request_obj.service_id.service_department_id_id
+                == user.service_department_id_id
+            )
+        return False
+
+
+class CanManageDepartmentOffice(permissions.BasePermission):
+    """Allow system admins and the owning department admin to edit office details."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and user.role_name in (Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN)
+        )
+
+    def has_object_permission(self, request, view, department):
+        user = request.user
+        if user.role_name == Roles.SYSTEM_ADMIN:
+            return True
+        return (
+            user.service_department_id_id is not None
+            and user.service_department_id_id == department.id
+        )

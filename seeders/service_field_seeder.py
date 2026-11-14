@@ -3,18 +3,27 @@ from typing import Any
 from django.db import transaction
 
 try:
+    from apps.requests.models import RequestFieldValue
     from apps.services.models import Service, ServiceField
     HAS_MODELS = True
 except Exception as exc:
+    RequestFieldValue = None
     Service = None
     ServiceField = None
     HAS_MODELS = False
     print(f"Models could not be imported: {exc}")
 
 
+def _clear_service_field_data(service: Service) -> None:
+    if RequestFieldValue is None:
+        return
+    RequestFieldValue.objects.filter(field_id__service_id=service).delete()
+    ServiceField.objects.filter(service_id=service).delete()
+
+
 def seed_cia_reappear_fields(service: Service) -> int:
     """Fields for COE-001: CIA Reappear."""
-    ServiceField.objects.filter(service_id=service).delete()
+    _clear_service_field_data(service)
     count = 0
 
     # 1. Semester
@@ -166,7 +175,7 @@ def seed_cia_reappear_fields(service: Service) -> int:
 
 def seed_transcript_fields(service: Service) -> int:
     """Fields for COE-002: Transcript Certificate."""
-    ServiceField.objects.filter(service_id=service).delete()
+    _clear_service_field_data(service)
     count = 0
 
     # 1. Purpose of Transcript
@@ -253,7 +262,7 @@ def seed_transcript_fields(service: Service) -> int:
 
 def seed_statement_of_marks_fields(service: Service) -> int:
     """Fields for COE-003: Statement of Marks – All Semesters."""
-    ServiceField.objects.filter(service_id=service).delete()
+    _clear_service_field_data(service)
     count = 0
 
     # 1. Programme Type
@@ -340,7 +349,7 @@ def seed_statement_of_marks_fields(service: Service) -> int:
 
 def seed_pass_certificate_fields(service: Service) -> int:
     """Fields for COE-004: Pass Certificate."""
-    ServiceField.objects.filter(service_id=service).delete()
+    _clear_service_field_data(service)
     count = 0
 
     # 1. Month and Year of Passing
@@ -421,7 +430,7 @@ def seed_pass_certificate_fields(service: Service) -> int:
 
 def seed_name_correction_fields(service: Service) -> int:
     """Fields for COE-005: Name Correction MS."""
-    ServiceField.objects.filter(service_id=service).delete()
+    _clear_service_field_data(service)
     count = 0
 
     # 1. Correction Type

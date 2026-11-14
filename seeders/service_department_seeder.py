@@ -20,7 +20,8 @@ def run() -> dict[str, Any]:
     print("\nSeeding service departments...\n")
 
     departments = [
-        {"code": "COE", "name": "Controller of Examinations", "status": "ACTIVE"}
+        {"code": "COE", "name": "Controller of Examinations", "status": "ACTIVE"},
+        {"code": "LIB", "name": "Library", "status": "ACTIVE"},
     ]
 
     created = 0

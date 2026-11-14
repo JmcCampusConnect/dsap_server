@@ -25,10 +25,15 @@ class Notification(models.Model):
         db_column="template_id"
     )
 
+    subject = models.CharField(max_length=200, blank=True)
+    message = models.TextField(blank=True)
     status = models.CharField(
         max_length=20,
         default="QUEUED"
     )
+
+    delivery_error = models.TextField(blank=True)
+    retry_count = models.PositiveSmallIntegerField(default=0)
 
     sent_at = models.DateTimeField(
         null=True,
@@ -53,6 +58,7 @@ class NotificationTemplate(models.Model):
     id = models.BigAutoField(primary_key=True)
     event_code = models.CharField(max_length=40)
     channel = models.CharField(max_length=10)
+    subject = models.CharField(max_length=200, blank=True)
     template_body = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

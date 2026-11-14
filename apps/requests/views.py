@@ -1,4 +1,5 @@
 import hashlib
+import mimetypes
 import uuid
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count
-from django.utils import timezone
+from django.http import FileResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -18,16 +19,17 @@ from common.pagination import StandardPagination
 from apps.documents.models import Document
 from apps.notifications.models import Notification
 from apps.payments.models import Payment
+from apps.payments.serializers import PaymentDetailSerializer
+from apps.payments.services import submit_request
 from apps.requests.models import Request, RequestFieldValue
 from apps.services.models import Service, ServiceDocument, ServiceField
-from apps.workflow.models import WorkflowHistory, WorkflowStep
+from apps.workflow.models import WorkflowHistory
 
 from .permissions import IsStudent, IsStudentOwner
 from .serializers import (
     DocumentUploadSerializer,
     MyRequestDetailSerializer,
     MyRequestListSerializer,
-    PaymentSerializer,
     RequestCreateSerializer,
     RequestDocumentSerializer,
     RequestNotificationSerializer,
@@ -71,6 +73,7 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
             'current_step_id',
             'current_step_id__responsible_role_id',
             'student_id',
+            'payment',
         )
 
         status_param = self.request.query_params.get('status')
@@ -90,6 +93,8 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
                 {
                     'total': 0,
                     'DRAFT': 0,
+                    'PAYMENT_PENDING': 0,
+                    'PAYMENT_ISSUE': 0,
                     'SUBMITTED': 0,
                     'VERIFIED': 0,
                     'PROCESSING': 0,
@@ -108,6 +113,8 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
 
         counts_dict = {
             'DRAFT': 0,
+            'PAYMENT_PENDING': 0,
+            'PAYMENT_ISSUE': 0,
             'SUBMITTED': 0,
             'VERIFIED': 0,
             'PROCESSING': 0,
@@ -218,6 +225,50 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
         )
         serializer = RequestDocumentSerializer(documents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _document_file_response(self, request_obj, doc_id, *, as_attachment):
+        try:
+            document = Document.objects.get(pk=doc_id, request_id=request_obj)
+        except Document.DoesNotExist:
+            return Response(
+                {'detail': 'Document not found for this request.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not document.file_path or not default_storage.exists(document.file_path):
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            file_obj = default_storage.open(document.file_path, 'rb')
+        except FileNotFoundError:
+            return Response(
+                {'detail': 'Document file is unavailable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = Path(document.file_path).name
+        content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+        response = FileResponse(
+            file_obj,
+            as_attachment=as_attachment,
+            filename=filename,
+            content_type=content_type,
+        )
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/view')
+    def view_document(self, request, pk=None, doc_id=None):
+        request_obj = self.get_object()
+        return self._document_file_response(request_obj, doc_id, as_attachment=False)
+
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>[0-9]+)/download')
+    def download_document(self, request, pk=None, doc_id=None):
+        request_obj = self.get_object()
+        return self._document_file_response(request_obj, doc_id, as_attachment=True)
     
 class StudentRequestViewSet(viewsets.GenericViewSet):
     """
@@ -240,6 +291,7 @@ class StudentRequestViewSet(viewsets.GenericViewSet):
             'service_id__service_department_id',
             'current_step_id',
             'current_step_id__responsible_role_id',
+            'payment',
         )
 
     def _serialize_detail(self, request_obj):
@@ -388,36 +440,35 @@ class StudentRequestViewSet(viewsets.GenericViewSet):
                 .values_list('document_name', flat=True)
             )
 
-        # 3) Payment record must exist (SUCCESS is mocked below until gateway lands)
-        payment = Payment.objects.filter(request_id=request_obj).first()
-        if not payment:
-            errors['payment'] = 'No payment record found for this request.'
-
         if errors:
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
-        first_step = (
-            WorkflowStep.objects
-            .filter(service_id=service)
-            .order_by('step_order', 'id')
-            .first()
+        payment = submit_request(
+            request_obj,
+            submitted_by=request.user,
+            offline_payment_acknowledged=(
+                request.data.get('offline_payment_acknowledged') is True
+            ),
         )
-
-        now = timezone.now()
-        with transaction.atomic():
-            # TODO(payment-gateway): remove this block once the real gateway
-            # webhook flips payment_status to SUCCESS before submit is allowed.
-            if payment.payment_status != 'SUCCESS':
-                payment.payment_status = 'SUCCESS'
-                payment.paid_at = now
-                payment.save()
-
-            request_obj.current_status = 'SUBMITTED'
-            request_obj.current_step_id = first_step
-            request_obj.submitted_at = now
-            request_obj.save()
-
-        return Response(self._serialize_detail(request_obj), status=status.HTTP_200_OK)
+        request_obj.refresh_from_db()
+        department = service.service_department_id
+        response_data = dict(self._serialize_detail(request_obj))
+        response_data['submission'] = {
+            'request_number': request_obj.request_number,
+            'fee_amount': str(payment.amount),
+            'payment_status': payment.payment_status,
+            'department_name': department.name,
+            'office_address': department.office_address,
+            'office_hours': department.office_hours,
+            'contact_phone': department.contact_phone,
+            'payment_due_at': payment.payment_due_at,
+            'instructions': [
+                'Collect the official physical challan from the department office.',
+                'Complete the challan and pay the fee at the bank.',
+                'Return the bank-stamped challan to the department office for verification.',
+            ] if payment.amount > 0 else [],
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
     # POST /api/requests/{id}/documents/
@@ -516,4 +567,4 @@ class StudentRequestViewSet(viewsets.GenericViewSet):
                 {'detail': 'No payment record for this request.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(PaymentSerializer(payment).data, status=status.HTTP_200_OK)
+        return Response(PaymentDetailSerializer(payment).data, status=status.HTTP_200_OK)
