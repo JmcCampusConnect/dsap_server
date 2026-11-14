@@ -28,7 +28,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == "me":
             return [IsAuthenticated()]
 
-        if self.action in ("list", "retrieve", "export_excel"):
+        if self.action in ("list", "retrieve", "export_excel", "download_template"):
             return [IsAuthenticated(), IsOwnServiceDepartment()]
 
         return [IsAuthenticated(), IsUserManager(), IsOwnServiceDepartment()]
@@ -168,7 +168,67 @@ class UserViewSet(viewsets.ModelViewSet):
     # ------------------------------------------------------------------
     # Export (inherits scoping from get_queryset)
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Download Excel Template
+    # ------------------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="download-template")
+    def download_template(self, request):
+        from apps.departments.models import ServiceDepartment
+        
+        wb = openpyxl.Workbook()
+        
+        # --- Sheet 1: The actual template ---
+        ws = wb.active
+        ws.title = "Template"
+        
+        # Headers (Note: Service Dept is optional, but we include it)
+        headers = ["Username*", "Email*", "Role*", "Service Dept"]
+        ws.append(headers)
+        
+        # Style headers
+        from openpyxl.styles import Font
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            ws.column_dimensions[cell.column_letter].width = 25
 
+        # Add a sample row to show format
+        ws.append(["john.doe", "john@example.com", "SERVICE_DEPT_STAFF", "Examination Cell"])
+
+        # --- Sheet 2: Reference Data (for copy-pasting) ---
+        ref_ws = wb.create_sheet(title="Reference Data")
+        ref_ws.append(["Valid Roles", "Valid Service Departments"])
+        
+        # Bold headers
+        for cell in ref_ws[1]:
+            cell.font = Font(bold=True)
+        
+        # Fetch roles (excluding STUDENT)
+        from ..role_constants import Roles
+        valid_roles = [r for r in Roles.all() if r != Roles.STUDENT]
+        
+        # Fetch service departments
+        valid_depts = list(ServiceDepartment.objects.values_list("name", flat=True).order_by("name"))
+        
+        # Match the max length to zip them side-by-side
+        max_len = max(len(valid_roles), len(valid_depts))
+        for i in range(max_len):
+            role = valid_roles[i] if i < len(valid_roles) else ""
+            dept = valid_depts[i] if i < len(valid_depts) else ""
+            ref_ws.append([role, dept])
+
+        # Adjust column widths
+        ref_ws.column_dimensions["A"].width = 25
+        ref_ws.column_dimensions["B"].width = 35
+
+        # --- Generate Response ---
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = "attachment; filename=user_import_template.xlsx"
+        wb.save(response)
+        return response
+
+    
     @action(detail=False, methods=["get"], url_path="export")
     def export_excel(self, request):
         qs = self.get_queryset().select_related("role_id")
@@ -217,10 +277,8 @@ class UserViewSet(viewsets.ModelViewSet):
     )
     def import_excel(self, request):
         """
-        SYSTEM_ADMIN       : existing behaviour (no department assigned from file).
-        SERVICE_DEPT_ADMIN : every imported user is forced into the admin's own
-        department; only SERVICE_DEPT_STAFF role allowed.
-        SERVICE_DEPT_STAFF : 403.
+        SYSTEM_ADMIN       : Reads service_department from file (optional).
+        SERVICE_DEPT_ADMIN : Forces the admin's own department.
         """
         if not request.user.has_any_role(
             [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN]
@@ -230,7 +288,6 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
             
-        # Force department assignment for dept admins - never trust the file.
         forced_service_dept = None
         if request.user.has_role(Roles.SERVICE_DEPT_ADMIN):
             forced_service_dept = request.user.service_department_id
@@ -241,102 +298,59 @@ class UserViewSet(viewsets.ModelViewSet):
                 )
 
         file = request.FILES.get("file")
-
         if not file:
-            return Response(
-                {"error": "No file uploaded"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             wb = openpyxl.load_workbook(file, data_only=True)
             ws = wb.active
         except Exception:
-            return Response(
-                {"error": "Invalid Excel file format"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "Invalid Excel file format"}, status=status.HTTP_400_BAD_REQUEST)
 
         rows = list(ws.iter_rows(values_only=True))
-
         if len(rows) < 2:
+            return Response({"error": "File is empty or contains only headers"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Updated expected headers (Removed Status, added Service Dept)
+        headers = [str(h).strip().replace("*", "") for h in rows[0] if h is not None]
+        expected_headers = ["Username", "Email", "Role", "Service Dept"]
+
+        # We strictly check the first 3 mandatory columns
+        if len(headers) < 3 or headers[:3] != expected_headers[:3]:
             return Response(
-                {"error": "File is empty or contains only headers"},
+                {"error": f"Invalid headers. Expected at least: {', '.join(expected_headers[:3])}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        headers = [str(h).strip() for h in rows[0] if h is not None]
-
-        expected_headers = [
-            "Username",
-            "Email",
-            "Role",
-            "Status",
-        ]
-
-        if (
-            len(headers) < len(expected_headers)
-            or headers[: len(expected_headers)] != expected_headers
-        ):
-            return Response(
-                {
-                    "error": (
-                        f"Invalid headers. Expected: "
-                        f"{', '.join(expected_headers)}"
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        from apps.departments.models import ServiceDepartment
+        
         errors = []
         valid_users = []
-
-        db_existing_usernames = set(
-            User.objects.values_list("username", flat=True)
-        )
-        db_existing_emails = set(
-            User.objects.exclude(email__isnull=True)
-            .exclude(email="")
-            .values_list("email", flat=True)
-        )
-
+        
+        db_existing_usernames = set(User.objects.values_list("username", flat=True))
+        db_existing_emails = set(User.objects.exclude(email__isnull=True).exclude(email="").values_list("email", flat=True))
         seen_usernames = set()
         seen_emails = set()
 
+        # Fetch valid roles (excluding student)
         roles = {
             role.name: role
             for role in User._meta.get_field("role_id").remote_field.model.objects.filter(
                 name__in=Roles.all()
-            )
+            ) if role.name != Roles.STUDENT
         }
+        
+        # Fetch valid departments for validation
+        dept_map = {d.name: d for d in ServiceDepartment.objects.all()}
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not any(row):
                 continue
 
-            username = (
-                str(row[0]).strip()
-                if row[0] is not None
-                else ""
-            )
-
-            email = (
-                str(row[1]).strip()
-                if len(row) > 1 and row[1] is not None
-                else ""
-            )
-
-            role_name = (
-                str(row[2]).strip()
-                if len(row) > 2 and row[2] is not None
-                else ""
-            )
-
-            status_value = (
-                str(row[3]).strip().lower()
-                if len(row) > 3 and row[3] is not None
-                else "active"
-            )
+            username = str(row[0]).strip() if row[0] is not None else ""
+            email = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+            role_name = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+            dept_name = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
 
             row_errors = []
 
@@ -344,17 +358,11 @@ class UserViewSet(viewsets.ModelViewSet):
             if not username:
                 row_errors.append("Username is required.")
             elif len(username) > 100:
-                row_errors.append(
-                    "Username cannot exceed 100 characters."
-                )
+                row_errors.append("Username cannot exceed 100 characters.")
             elif username in db_existing_usernames:
-                row_errors.append(
-                    f"Username '{username}' already exists."
-                )
+                row_errors.append(f"Username '{username}' already exists.")
             elif username in seen_usernames:
-                row_errors.append(
-                    f"Duplicate Username '{username}' found within the uploaded Excel file."
-                )
+                row_errors.append(f"Duplicate Username '{username}' found within file.")
             else:
                 seen_usernames.add(username)
 
@@ -362,105 +370,65 @@ class UserViewSet(viewsets.ModelViewSet):
             if not email:
                 row_errors.append("Email is required.")
             elif len(email) > 150:
-                row_errors.append(
-                    "Email cannot exceed 150 characters."
-                )
+                row_errors.append("Email cannot exceed 150 characters.")
             elif email in db_existing_emails:
-                row_errors.append(
-                    f"Email '{email}' already exists."
-                )
+                row_errors.append(f"Email '{email}' already exists.")
             elif email in seen_emails:
-                row_errors.append(
-                    f"Duplicate Email '{email}' found within the uploaded Excel file."
-                )
+                row_errors.append(f"Duplicate Email '{email}' found within file.")
             else:
                 seen_emails.add(email)
 
             # Role validation
             role_obj = None
-
             if not role_name:
                 row_errors.append("Role is required.")
             elif role_name not in roles:
-                row_errors.append(
-                    f"Role '{role_name}' does not exist."
-                )
+                row_errors.append(f"Role '{role_name}' does not exist. Please copy exactly from the template.")
             else:
                 role_obj = roles[role_name]
-                
-            # Students are managed via Student Management, not here.
-            if role_obj is not None and role_obj.name == Roles.STUDENT:
-                row_errors.append(
-                    "Student accounts must be created via Student Management."
-                )
-                
-            # SERVICE_DEPT_ADMIN may only import SERVICE_DEPT_STAFF.
-            if (
-                request.user.has_role(Roles.SERVICE_DEPT_ADMIN)
-                and role_obj is not None
-                and role_obj.name != Roles.SERVICE_DEPT_STAFF
-            ):
-                row_errors.append(
-                    "Service Dept Admin can only import users with role "
-                    "'SERVICE_DEPT_STAFF'."
-                )
 
+            # Department validation (optional)
+            dept_obj = forced_service_dept
+            if not forced_service_dept and dept_name:
+                if dept_name not in dept_map:
+                    row_errors.append(f"Department '{dept_name}' does not exist. Please copy exactly from the template.")
+                else:
+                    dept_obj = dept_map[dept_name]
 
-            # Status validation
-            if status_value not in {"active", "inactive"}:
-                row_errors.append(
-                    "Status must be active or inactive."
-                )
-
-            if row_errors:
-                errors.append(
-                    {
-                        "row": row_idx,
-                        "errors": row_errors,
-                    }
-                )
-            else:
+            # If no errors, prepare user
+            if not row_errors:
                 valid_users.append(
                     User(
                         username=username,
                         email=email,
                         password_hash="",
                         role_id=role_obj,
-                        is_active=status_value == "active",
-                        service_department_id=forced_service_dept
+                        is_active=True, # Default to Active automatically
+                        service_department_id=dept_obj
                     )
                 )
+            else:
+                errors.append({"row": row_idx, "errors": row_errors})
 
         if errors:
             return Response(
-                {
-                    "error": "Validation failed for some rows",
-                    "details": errors,
-                },
+                {"error": "Validation failed for some rows", "details": errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         with transaction.atomic():
             User.objects.bulk_create(valid_users)
-
             AuditLog.log(
                 request=request,
                 action="IMPORT",
                 obj=User,
                 object_id="BULK_IMPORT",
                 object_repr="Imported Users",
-                changes={
-                    "imported_count": len(valid_users)
-                },
+                changes={"imported_count": len(valid_users)},
             )
 
         return Response(
-            {
-                "message": (
-                    f"Successfully imported "
-                    f"{len(valid_users)} users"
-                )
-            },
+            {"message": f"Successfully imported {len(valid_users)} users"},
             status=status.HTTP_201_CREATED,
         )
         

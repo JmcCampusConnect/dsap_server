@@ -110,18 +110,6 @@ class PaymentDetailSerializer(PaymentListSerializer):
     payment_due_date = serializers.DateTimeField(
         source="payment_due_at", read_only=True
     )
-    office_address = serializers.CharField(
-        source="request_id.service_id.service_department_id.office_address",
-        read_only=True,
-    )
-    office_hours = serializers.CharField(
-        source="request_id.service_id.service_department_id.office_hours",
-        read_only=True,
-    )
-    contact_phone = serializers.CharField(
-        source="request_id.service_id.service_department_id.contact_phone",
-        read_only=True,
-    )
     verified_by_name = serializers.CharField(
         source="verified_by.username", read_only=True, allow_null=True
     )
@@ -140,8 +128,5 @@ class PaymentDetailSerializer(PaymentListSerializer):
             "reminder_count",
             "last_reminder_at",
             "payment_due_date",
-            "office_address",
-            "office_hours",
-            "contact_phone",
             "verification_history",
         ]
