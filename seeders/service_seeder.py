@@ -50,7 +50,7 @@ COE_SERVICES = [
         "code": "COE-005",
         "name": "Name Correction MS",
         "dept_code": "COE",
-        "base_fee": 300.00,
+        "base_fee": 200.00,
         "sla_days": 5,
         "description": "Request for correction of Student Name or Date of Birth in official COE examination records and re-issuance of mark statements.",
     },
