@@ -30,11 +30,13 @@ class UserSerializer(serializers.ModelSerializer):
         source="service_department_id", read_only=True
     )
 
+    service_department_name = serializers.CharField(source="service_department_id.name", read_only=True)
+
     class Meta:
         model = User
         fields = [
             "id", "username", "email", "password", "role_id", "role_name", 
-            "service_department_id", "service_department", "is_active", "created_at", "last_login"
+            "service_department_id", "service_department","service_department_name", "is_active", "created_at", "last_login"
         ]
         read_only_fields = ["id", "created_at", "last_login"]
     
