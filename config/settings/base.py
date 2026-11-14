@@ -99,6 +99,18 @@ DATABASES = {
     "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
 }
 
+# ---------------------------------------------------------------------------
+# pg8000 override — Windows AppControl policy blocks unsigned .pyd files
+# (psycopg2/_psycopg.cp313-win_amd64.pyd, psycopg_binary/pq.pyd, etc.)
+# django_pg8000 is a 100% pure-Python PostgreSQL backend that requires no
+# C extensions and therefore works under strict AppControl environments.
+# ---------------------------------------------------------------------------
+if DATABASES["default"].get("ENGINE") in (
+    "django.db.backends.postgresql",
+    "django.db.backends.postgresql_psycopg2",
+):
+    DATABASES["default"]["ENGINE"] = "django_pg8000"
+
 AUTH_USER_MODEL = 'accounts.User'
 
 AUTHENTICATION_BACKENDS = [

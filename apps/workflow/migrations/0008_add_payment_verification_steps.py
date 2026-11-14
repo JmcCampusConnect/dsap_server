@@ -31,11 +31,11 @@ def add_payment_steps(apps, schema_editor):
             step_order=models_f("step_order") - TEMPORARY_ORDER_OFFSET + 1
         )
         WorkflowStep.objects.create(
-            service_id=service.pk,
+            service_id=service,
             step_order=1,
             step_name=PAYMENT_STEP_NAME,
             step_kind="PAYMENT_VERIFY",
-            responsible_role_id=staff_role.pk,
+            responsible_role_id=staff_role,
             allowed_actions=["CONFIRM_PAYMENT", "REJECT_PAYMENT"],
         )
 
