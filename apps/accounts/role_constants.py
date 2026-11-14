@@ -52,7 +52,6 @@ MENU_ACCESS_CONFIG = {
     "subjects": [Roles.SYSTEM_ADMIN],
     "attendance": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "results": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.STUDENT],
-    "my_department": [Roles.SERVICE_DEPT_ADMIN],
 
     # System Admin only
     "notification_templates": [Roles.SYSTEM_ADMIN],

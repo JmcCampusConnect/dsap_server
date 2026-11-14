@@ -1,21 +1,7 @@
 from rest_framework import serializers
+
 from apps.departments.models import ServiceDepartment
 from apps.accounts.role_constants import Roles
-
-
-class ServiceDepartmentOfficeDetailsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ServiceDepartment
-        fields = [
-            "id",
-            "office_address",
-            "office_hours",
-            "contact_phone",
-            "payment_due_days",
-            "payment_reminder_days",
-            "payment_max_reminders",
-        ]
-        read_only_fields = ["id"]
 
 
 class ServiceDepartmentSerializer(serializers.ModelSerializer):
@@ -25,12 +11,6 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
             "id",
             "code",
             "name",
-            "office_address",
-            "office_hours",
-            "contact_phone",
-            "payment_due_days",
-            "payment_reminder_days",
-            "payment_max_reminders",
             "hod_user_id",
             "status",
         ]
@@ -64,9 +44,6 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate_status(self, value):
-        return value.lower()
-
     def create(self, validated_data):
         department = ServiceDepartment.objects.create(**validated_data)
 
@@ -86,12 +63,6 @@ class ServiceDepartmentSerializer(serializers.ModelSerializer):
             allowed_fields = {
                 'name',
                 'hod_user_id',
-                'office_address',
-                'office_hours',
-                'contact_phone',
-                'payment_due_days',
-                'payment_reminder_days',
-                'payment_max_reminders',
             }
             for field in list(validated_data.keys()):
                 if field not in allowed_fields:
