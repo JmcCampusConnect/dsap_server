@@ -146,8 +146,8 @@ class CanVerifyPayment(permissions.BasePermission):
         return False
 
 
-class CanManageDepartmentOffice(permissions.BasePermission):
-    """Allow system admins and the owning department admin to edit office details."""
+class CanManageServiceDepartment(permissions.BasePermission):
+    """Allow system admins and the owning department admin to edit department details."""
 
     def has_permission(self, request, view):
         user = request.user

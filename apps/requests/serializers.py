@@ -277,11 +277,6 @@ class MyRequestDetailSerializer(serializers.ModelSerializer):
                 'id': dept.id if dept else None,
                 'code': dept.code if dept else None,
                 'name': dept.name if dept else None,
-                'office_address': dept.office_address if dept else '',
-                'office_hours': dept.office_hours if dept else '',
-                'contact_phone': dept.contact_phone if dept else '',
-                'payment_due_days': dept.payment_due_days if dept else None,
-                'payment_reminder_days': dept.payment_reminder_days if dept else None,
             } if dept else None,
         }
 

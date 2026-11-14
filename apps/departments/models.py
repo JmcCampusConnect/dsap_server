@@ -6,12 +6,6 @@ class ServiceDepartment(models.Model):
     id = models.BigAutoField(primary_key=True)
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=150)
-    office_address = models.TextField(blank=True)
-    office_hours = models.CharField(max_length=150, blank=True)
-    contact_phone = models.CharField(max_length=30, blank=True)
-    payment_due_days = models.PositiveSmallIntegerField(null=True, blank=True)
-    payment_reminder_days = models.PositiveSmallIntegerField(null=True, blank=True)
-    payment_max_reminders = models.PositiveSmallIntegerField(default=3)
     hod_user_id = models.ForeignKey(
         'accounts.User',
         on_delete=models.RESTRICT,
@@ -19,7 +13,7 @@ class ServiceDepartment(models.Model):
         blank=True,
         db_column='hod_user_id'
     )
-    status = models.CharField(max_length=10, default='active')
+    status = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
