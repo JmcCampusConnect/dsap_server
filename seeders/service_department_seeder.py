@@ -20,8 +20,8 @@ def run() -> dict[str, Any]:
     print("\nSeeding service departments...\n")
 
     departments = [
-        {"code": "COE", "name": "Controller of Examinations", "status": "ACTIVE"},
-        {"code": "LIB", "name": "Library", "status": "ACTIVE"},
+        {"code": "COE", "name": "Controller of Examinations", "status": True},
+        {"code": "LIB", "name": "Library", "status": True},
     ]
 
     created = 0
@@ -33,7 +33,7 @@ def run() -> dict[str, Any]:
             code=dept_data["code"],
             defaults={
                 "name": dept_data["name"],
-                "status": dept_data.get("status", "ACTIVE"),
+                "status": dept_data.get("status", True),
             },
         )
 
@@ -44,7 +44,7 @@ def run() -> dict[str, Any]:
             changed = False
             if dept.name != dept_data["name"]:
                 changed = True
-            if dept.status != dept_data.get("status", "ACTIVE"):
+            if dept.status != dept_data.get("status", True):
                 changed = True
             if changed:
                 updated += 1

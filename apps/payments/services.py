@@ -1,6 +1,5 @@
 import logging
 from collections import defaultdict
-from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -67,9 +66,6 @@ def _notify_student_after_commit(request_id, event_code, extra_context=None):
             "request_number": request_obj.request_number,
             "amount": str(request_obj.payment.amount),
             "department_name": request_obj.service_id.service_department_id.name,
-            "office_address": request_obj.service_id.service_department_id.office_address,
-            "office_hours": request_obj.service_id.service_department_id.office_hours,
-            "contact_phone": request_obj.service_id.service_department_id.contact_phone,
             "rejection_reason": request_obj.payment.rejection_reason,
             **(extra_context or {}),
         },
@@ -105,54 +101,6 @@ def _schedule_notification(request_id, event_code, extra_context=None):
     )
 
 
-def send_payment_reminders(now=None):
-    """Queue due in-app reminders for pending payments, respecting each department's cap."""
-    now = now or timezone.now()
-    payment_ids = Payment.objects.filter(
-        payment_status=PaymentStatuses.PENDING,
-        request_id__submitted_at__isnull=False,
-    ).values_list("pk", flat=True)
-    scheduled = 0
-
-    for payment_id in payment_ids.iterator():
-        with transaction.atomic():
-            payment = Payment.objects.select_for_update(of=("self",)).get(
-                pk=payment_id
-            )
-            request_obj = (
-                Request.objects.select_for_update(of=("self",))
-                .select_related("service_id__service_department_id")
-                .get(pk=payment.request_id_id)
-            )
-            department = request_obj.service_id.service_department_id
-            interval_days = department.payment_reminder_days
-            maximum = department.payment_max_reminders
-            if not interval_days or not maximum or payment.reminder_count >= maximum:
-                continue
-
-            last_sent = payment.last_reminder_at or request_obj.submitted_at
-            if not last_sent or now < last_sent + timedelta(days=interval_days):
-                continue
-            if not NotificationTemplate.objects.filter(
-                event_code="PAYMENT_REMINDER"
-            ).exists():
-                logger.error(
-                    "Payment reminder skipped: no templates for request %s.",
-                    request_obj.pk,
-                )
-                continue
-
-            payment.reminder_count += 1
-            payment.last_reminder_at = now
-            payment.save(
-                update_fields=["reminder_count", "last_reminder_at", "updated_at"]
-            )
-            _schedule_notification(request_obj.pk, "PAYMENT_REMINDER")
-            scheduled += 1
-
-    return scheduled
-
-
 def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=False):
     """Submit a draft, snapshot its fee, and route it to the correct first step."""
     with transaction.atomic():
@@ -167,7 +115,6 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
             )
 
         service = locked_request.service_id
-        department = service.service_department_id
         fee = Decimal(service.base_fee or 0)
         payment, _ = Payment.objects.select_for_update().get_or_create(
             request_id=locked_request,
@@ -186,10 +133,7 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
                 )
             step = _payment_step(locked_request)
             payment.payment_status = PaymentStatuses.PENDING
-            due_days = department.payment_due_days
-            payment.payment_due_at = (
-                now + timedelta(days=due_days) if due_days else None
-            )
+            payment.payment_due_at = None
             locked_request.current_status = RequestStatuses.PAYMENT_PENDING
             event_code = "PAYMENT_PENDING"
         else:

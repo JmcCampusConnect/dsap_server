@@ -1,5 +1,4 @@
 from decimal import Decimal
-from datetime import timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -7,13 +6,11 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.departments.models import AcademicDepartment, ServiceDepartment
-from apps.notifications.models import Notification
 from apps.payments.models import Payment, PaymentVerificationLog
 from apps.payments.services import (
     PaymentFlowError,
     confirm_payment,
     reject_payment,
-    send_payment_reminders,
     submit_request,
 )
 from apps.requests.models import Request
@@ -29,7 +26,6 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.department = ServiceDepartment.objects.create(
             code="PAY-TEST",
             name="Payment Test Department",
-            payment_due_days=10,
         )
         self.staff = User.objects.create(
             username="payment-test-staff",
@@ -141,9 +137,9 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(request.current_status, "PAYMENT_PENDING")
         self.assertEqual(request.current_step_id, self.payment_step)
         self.assertEqual(payment.payment_status, "PENDING")
-        self.assertIsNotNone(payment.payment_due_at)
+        self.assertIsNone(payment.payment_due_at)
 
-    def test_submit_api_requires_ack_and_returns_office_instructions(self):
+    def test_submit_api_requires_ack_and_returns_offline_payment_instructions(self):
         request, _ = self.create_draft()
         self.client.force_authenticate(user=self.student.user_id)
 
@@ -166,6 +162,10 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(accepted.data["current_status"], "PAYMENT_PENDING")
         self.assertEqual(accepted.data["submission"]["fee_amount"], "125.00")
         self.assertEqual(len(accepted.data["submission"]["instructions"]), 3)
+        self.assertNotIn("office_address", accepted.data["submission"])
+        self.assertNotIn(
+            "office_address", accepted.data["service"]["department"]
+        )
 
     def test_free_service_skips_payment_verification(self):
         free_service = Service.objects.create(
@@ -348,38 +348,17 @@ class OfflinePaymentFlowTestCase(TestCase):
             [own_request.request_number],
         )
 
-    def test_reminder_command_queues_due_reminder_and_honors_cap(self):
-        self.department.payment_reminder_days = 2
-        self.department.payment_max_reminders = 1
-        self.department.save(
-            update_fields=["payment_reminder_days", "payment_max_reminders"]
-        )
+    def test_new_offline_payment_does_not_assign_a_due_date(self):
         request, payment = self.create_draft()
         submit_request(
             request,
             submitted_by=self.staff,
             offline_payment_acknowledged=True,
         )
-        request.refresh_from_db()
-        request.submitted_at = timezone.now() - timedelta(days=3)
-        request.save(update_fields=["submitted_at"])
-
-        with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(send_payment_reminders(), 1)
-
         payment.refresh_from_db()
-        self.assertEqual(payment.reminder_count, 1)
-        self.assertIsNotNone(payment.last_reminder_at)
-        self.assertEqual(
-            Notification.objects.filter(
-                request_id=request,
-                template_id__event_code="PAYMENT_REMINDER",
-            ).count(),
-            1,
-        )
-        self.assertEqual(send_payment_reminders(), 0)
+        self.assertIsNone(payment.payment_due_at)
 
-    def test_department_admin_can_update_only_own_office_details(self):
+    def test_department_admin_can_update_only_own_department_profile(self):
         admin_role = Role.objects.create(name="SERVICE_DEPT_ADMIN")
         department_admin = User.objects.create(
             username="payment-test-admin",
@@ -395,26 +374,59 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.client.force_authenticate(user=department_admin)
 
         updated = self.client.patch(
-            f"/api/service-departments/{self.department.pk}/office-details/",
-            {
-                "office_address": "Main Campus, Room 10",
-                "office_hours": "Weekdays, 9 AM-4 PM",
-                "contact_phone": "0000000000",
-                "payment_due_days": 14,
-                "payment_reminder_days": 3,
-                "payment_max_reminders": 2,
-            },
+            f"/api/service-departments/{self.department.pk}/",
+            {"name": "Updated Payment Department", "status": False},
             format="json",
             HTTP_HOST="localhost",
         )
         self.assertEqual(updated.status_code, 200)
-        self.assertEqual(updated.data["payment_max_reminders"], 2)
+        self.assertEqual(updated.data["name"], "Updated Payment Department")
+        self.assertIs(updated.data["status"], True)
+        self.assertNotIn("office_address", updated.data)
 
-        forbidden = self.client.get(
-            f"/api/service-departments/{other_department.pk}/office-details/",
+        forbidden = self.client.patch(
+            f"/api/service-departments/{other_department.pk}/",
+            {"name": "Not allowed"},
             HTTP_HOST="localhost",
         )
-        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(forbidden.status_code, 404)
+
+    def test_system_admin_can_create_and_filter_departments_by_boolean_status(self):
+        system_admin_role = Role.objects.create(name="SYSTEM_ADMIN")
+        system_admin = User.objects.create(
+            username="payment-test-system-admin",
+            email="payment-test-system-admin@example.test",
+            password_hash="not-a-real-password",
+            role_id=system_admin_role,
+        )
+        self.client.force_authenticate(user=system_admin)
+
+        created = self.client.post(
+            "/api/service-departments/",
+            {"code": "BOOL-TEST", "name": "Boolean Status Department", "status": False},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertIs(created.data["status"], False)
+        self.assertNotIn("office_address", created.data)
+
+        filtered = self.client.get(
+            "/api/service-departments/?status=false",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(filtered.status_code, 200)
+        self.assertIn(
+            created.data["id"],
+            [department["id"] for department in filtered.data["results"]],
+        )
+        invalid = self.client.post(
+            "/api/service-departments/",
+            {"code": "BOOL-INVALID", "name": "Invalid Status", "status": "active"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(invalid.status_code, 400)
 
     def test_student_cannot_confirm_or_reject_payment(self):
         request, payment = self.create_draft()

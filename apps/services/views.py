@@ -213,12 +213,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.is_authenticated and not user.is_system_admin():
             user_dept_id = getattr(user.service_department_id, "id", None) if user.service_department_id else None
-            departments = ServiceDepartment.objects.filter(id=user_dept_id, status__iexact="active") if user_dept_id else ServiceDepartment.objects.none()
+            departments = (
+                ServiceDepartment.objects.filter(id=user_dept_id, status=True)
+                if user_dept_id
+                else ServiceDepartment.objects.none()
+            )
             dept_services = Service.objects.filter(service_department_id=user_dept_id) if user_dept_id else Service.objects.none()
             codes = dept_services.values_list('code', flat=True).distinct().order_by('code')
             names = dept_services.values_list('name', flat=True).distinct().order_by('name')
         else:
-            departments = ServiceDepartment.objects.filter(status__iexact="active").order_by("name")
+            departments = ServiceDepartment.objects.filter(status=True).order_by("name")
             codes = Service.objects.values_list('code', flat=True).distinct().order_by('code')
             names = Service.objects.values_list('name', flat=True).distinct().order_by('name')
 
