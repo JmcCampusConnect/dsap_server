@@ -108,9 +108,6 @@ class OfflinePaymentFlowTestCase(TestCase):
         data = {
             "amount_received": Decimal("125.00"),
             "payment_date": timezone.localdate(),
-            "payment_mode": "BANK_COUNTER",
-            "bank_name": "Test Bank",
-            "bank_branch": "Main Branch",
             "receipt_number": "CHALLAN-001",
             "remarks": "Original stamped receipt checked.",
         }
@@ -218,6 +215,37 @@ class OfflinePaymentFlowTestCase(TestCase):
                 step_id=self.payment_step,
             ).exists()
         )
+
+    def test_confirm_api_accepts_reduced_payment_details(self):
+        request, payment = self.create_draft()
+        submit_request(
+            request,
+            submitted_by=self.staff,
+            offline_payment_acknowledged=True,
+        )
+        self.client.force_authenticate(user=self.staff)
+
+        response = self.client.post(
+            f"/api/payments/{payment.pk}/confirm/",
+            self.confirm_data(),
+            format="json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["amount_received"], "125.00")
+        self.assertEqual(response.data["receipt_number"], "CHALLAN-001")
+        self.assertNotIn("gateway_txn_id", response.data)
+        self.assertNotIn("payment_method", response.data)
+        self.assertNotIn("payment_mode", response.data)
+        self.assertNotIn("bank_name", response.data)
+        self.assertNotIn("bank_branch", response.data)
+        history = response.data["verification_history"][0]
+        self.assertEqual(history["action"], "CONFIRM")
+        self.assertEqual(history["receipt_number"], "CHALLAN-001")
+        self.assertNotIn("payment_mode", history)
+        self.assertNotIn("bank_name", history)
+        self.assertNotIn("bank_branch", history)
 
     def test_amount_mismatch_does_not_confirm_or_advance(self):
         request, payment = self.create_draft()
