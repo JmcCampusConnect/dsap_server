@@ -21,7 +21,7 @@ class ReportsModuleTestCase(TestCase):
         # Ensure a second service department (LIB) and users exist for scoping tests
         lib_dept, _ = ServiceDepartment.objects.get_or_create(
             code="LIB",
-            defaults={"name": "Library", "status": "active"},
+            defaults={"name": "Library", "status": True},
         )
         dept_admin_role = Role.objects.get(name=Roles.SERVICE_DEPT_ADMIN)
         dept_staff_role = Role.objects.get(name=Roles.SERVICE_DEPT_STAFF)
@@ -54,8 +54,7 @@ class ReportsModuleTestCase(TestCase):
                 defaults={
                     'amount': 500.00,
                     'payment_status': 'SUCCESS',
-                    'payment_method': 'UPI',
-                    'gateway_txn_id': 'TXN_TEST_1001',
+                    'receipt_number': 'REC_TEST_1001',
                     'paid_at': req.submitted_at,
                 }
             )
@@ -174,7 +173,6 @@ class ReportsModuleTestCase(TestCase):
         data = res.data
         self.assertIn("summary", data)
         self.assertIn("by_service", data)
-        self.assertIn("by_payment_method", data)
         self.assertIn("total_revenue_collected", data["summary"])
         self.assertIn("total_successful_transactions", data["summary"])
 

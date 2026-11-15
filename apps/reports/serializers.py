@@ -59,14 +59,16 @@ class ServiceReportSerializer(serializers.ModelSerializer):
 
 class PaymentReportSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=True)
+    amount_received = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=True, allow_null=True)
 
     class Meta:
         model = Payment
         fields = [
             'amount',
             'payment_status',
-            'payment_method',
-            'gateway_txn_id',
+            'amount_received',
+            'receipt_number',
+            'payment_date',
             'paid_at',
         ]
 

@@ -98,7 +98,16 @@ def apply_request_filters(qs, params, user):
     # Academic department filter
     acad_dept_id = params.get('academic_department_id')
     if acad_dept_id and str(acad_dept_id).isdigit():
-        qs = qs.filter(student_id__academic_department_id=int(acad_dept_id))
+        target_dept = AcademicDepartment.objects.filter(pk=int(acad_dept_id)).first()
+        if target_dept:
+            matching_ids = AcademicDepartment.objects.filter(
+                code=target_dept.code,
+                degree=target_dept.degree,
+                branch=target_dept.branch,
+            ).values_list('id', flat=True)
+            qs = qs.filter(student_id__academic_department_id__in=matching_ids)
+        else:
+            qs = qs.filter(student_id__academic_department_id=int(acad_dept_id))
 
     # Stream filter
     stream = params.get('stream')
@@ -198,13 +207,6 @@ def calculate_revenue_report(user, params):
         else:
             payments_qs = Payment.objects.none()
 
-    payment_method = params.get('payment_method')
-    if payment_method and payment_method.strip().upper() != 'ALL':
-        payment_method = payment_method.strip()
-        payments_qs = payments_qs.filter(payment_method__iexact=payment_method)
-    else:
-        payment_method = None
-
     # Overall Summary
     total_agg = payments_qs.aggregate(
         total_amount=Sum('amount'),
@@ -240,32 +242,12 @@ def calculate_revenue_report(user, params):
         for row in by_service_rows
     ]
 
-    # Group by Payment Method
-    by_method_rows = (
-        payments_qs.values('payment_method')
-        .annotate(
-            transaction_count=Count('id'),
-            total_amount=Sum('amount'),
-        )
-        .order_by('-total_amount')
-    )
-
-    by_payment_method = [
-        {
-            "payment_method": row['payment_method'] or 'UNKNOWN',
-            "transaction_count": row['transaction_count'],
-            "total_amount": f"{row['total_amount'] or 0:.2f}",
-        }
-        for row in by_method_rows
-    ]
-
     return {
         "filters_applied": {
             "from_date": params.get('from_date') or None,
             "to_date": params.get('to_date') or None,
             "service_department_id": effective_dept_id,
             "service_id": effective_service_id,
-            "payment_method": payment_method,
         },
         "summary": {
             "total_revenue_collected": total_revenue_collected,
@@ -273,7 +255,6 @@ def calculate_revenue_report(user, params):
             "currency": "INR",
         },
         "by_service": by_service,
-        "by_payment_method": by_payment_method,
     }
 
 
@@ -296,8 +277,8 @@ REQUEST_EXPORT_COLUMNS = [
     "Completed On",
     "Fee (INR)",
     "Payment Status",
-    "Payment Method",
-    "Transaction ID",
+    "Receipt Number",
+    "Payment Date",
 ]
 
 REVENUE_EXPORT_COLUMNS = [
@@ -341,8 +322,10 @@ def generate_requests_data_rows(queryset):
             req.completed_at.strftime('%Y-%m-%d %H:%M:%S') if req.completed_at else '',
             f"{payment.amount:.2f}" if payment and payment.amount is not None else '',
             payment.payment_status if payment else '',
-            payment.payment_method if payment else '',
-            payment.gateway_txn_id if payment else '',
+            payment.receipt_number if payment and payment.receipt_number else '',
+            payment.payment_date.strftime('%Y-%m-%d') if payment and payment.payment_date else (
+                payment.paid_at.strftime('%Y-%m-%d') if payment and payment.paid_at else ''
+            ),
         ])
     return rows
 

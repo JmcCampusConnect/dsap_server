@@ -7,7 +7,7 @@ Implements the 5 DASP Reporting APIs:
   GET /api/reports/export/    -> Synchronous Excel/CSV streaming download
   GET /api/reports/options/   -> Pre-scoped dynamic filter dropdown choices
 """
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, status
@@ -303,9 +303,20 @@ class ReportOptionsView(APIView):
 
         services = ServiceOptionSerializer(services_qs, many=True).data
 
-        # 3. Academic Departments
-        acad_qs = AcademicDepartment.objects.filter(status__iexact='active').order_by('code')
-        academic_departments = AcademicDepartmentMiniSerializer(acad_qs, many=True).data
+        # 3. Academic Departments (deduplicated by code and degree/branch name)
+        acad_qs = AcademicDepartment.objects.filter(
+            Q(status__iexact='active') | Q(status__iexact='true') | Q(status=True)
+        ).order_by('code', 'id')
+
+        seen_depts = set()
+        unique_acad_depts = []
+        for dept in acad_qs:
+            key = (dept.code, dept.name)
+            if key not in seen_depts:
+                seen_depts.add(key)
+                unique_acad_depts.append(dept)
+
+        academic_departments = AcademicDepartmentMiniSerializer(unique_acad_depts, many=True).data
 
         # 4. Request Statuses (all non-draft workflow statuses)
         request_statuses = [
