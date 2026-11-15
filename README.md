@@ -94,14 +94,25 @@ JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 
 SMS_GATEWAY_API_KEY=
-EMAIL_HOST=
+
+# Local development email (writes messages to the runserver console)
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+EMAIL_HOST=localhost
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
 EMAIL_HOST_USER=
 EMAIL_HOST_PASSWORD=
+DEFAULT_FROM_EMAIL=no-reply@college.edu
+EMAIL_TIMEOUT=10
+FRONTEND_URL=http://localhost:5173
 ```
 
 ### Convention
 
 Never commit `.env`. Secrets such as `SECRET_KEY`, database credentials, and gateway API keys should be injected at deploy time through your hosting platform's secrets manager rather than stored in the repository.
+
+Production must use `django.core.mail.backends.smtp.EmailBackend` and explicitly configure a non-local SMTP host, port, username, password, sender address, and exactly one of TLS or SSL. Do not copy real credentials into source control.
 
 ---
 

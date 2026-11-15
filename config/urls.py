@@ -30,6 +30,8 @@ urlpatterns = [
     # Requests
     path("api/requests/", include("apps.requests.urls")),
     path("api/payments/", include("apps.payments.urls")),
+    
+    # Notifications
     path("api/notifications/", include("apps.notifications.urls")),
 
     # Department Queue (staff workflow management)

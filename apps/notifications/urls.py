@@ -1,13 +1,12 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
-from .views import NotificationTemplateViewSet
+from .views import NotificationHistoryViewSet, NotificationTemplateViewSet
 
-template_list = NotificationTemplateViewSet.as_view({"get": "list"})
-template_detail = NotificationTemplateViewSet.as_view(
-    {"get": "retrieve", "patch": "partial_update"}
-)
+router = DefaultRouter()
+router.register("templates", NotificationTemplateViewSet, basename="notification-template")
+router.register("history", NotificationHistoryViewSet, basename="notification-history")
 
 urlpatterns = [
-    path("templates/", template_list, name="notification-template-list"),
-    path("templates/<int:pk>/", template_detail, name="notification-template-detail"),
+    path("", include(router.urls)),
 ]

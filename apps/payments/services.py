@@ -165,7 +165,7 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
                 "updated_at",
             ]
         )
-        WorkflowHistory.objects.create(
+        history_entry = WorkflowHistory.objects.create(
             request_id=locked_request,
             step_id=step,
             action_by_user_id=submitted_by,
@@ -175,6 +175,20 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
 
         if event_code:
             _schedule_notification(locked_request.pk, event_code)
+
+        from apps.notifications.services import schedule_notification_dispatch
+        from apps.workflow.constants import NotificationEventCodes
+
+        schedule_notification_dispatch(
+            event_code=NotificationEventCodes.REQ_SUBMITTED,
+            request_obj=locked_request,
+            event_identifier=f"SUBMIT_{locked_request.id}_{history_entry.id}",
+            extra_context={
+                "previous_status": RequestStatuses.DRAFT,
+                "new_status": locked_request.current_status,
+                "remarks": "Application submitted successfully.",
+            },
+        )
 
     request_obj.refresh_from_db()
     payment.refresh_from_db()
@@ -306,7 +320,7 @@ def confirm_payment(payment, staff_user, data):
         request_obj.save(
             update_fields=["current_step_id", "current_status", "updated_at"]
         )
-        WorkflowHistory.objects.create(
+        history_entry = WorkflowHistory.objects.create(
             request_id=request_obj,
             step_id=current_step,
             action_by_user_id=staff_user,
@@ -321,6 +335,20 @@ def confirm_payment(payment, staff_user, data):
             user=staff_user,
         )
         _schedule_notification(request_obj.pk, "PAYMENT_VERIFIED")
+
+        from apps.notifications.services import schedule_notification_dispatch
+        from apps.workflow.constants import NotificationEventCodes
+
+        schedule_notification_dispatch(
+            event_code=NotificationEventCodes.REQ_SUBMITTED,
+            request_obj=request_obj,
+            event_identifier=f"WF_{history_entry.id}",
+            extra_context={
+                "previous_status": RequestStatuses.PAYMENT_PENDING,
+                "new_status": RequestStatuses.SUBMITTED,
+                "remarks": values["remarks"] or "Offline payment verified.",
+            },
+        )
 
     payment.refresh_from_db()
     return payment
@@ -372,7 +400,7 @@ def reject_payment(payment, staff_user, reason, data=None):
         )
         request_obj.current_status = RequestStatuses.PAYMENT_ISSUE
         request_obj.save(update_fields=["current_status", "updated_at"])
-        WorkflowHistory.objects.create(
+        history_entry = WorkflowHistory.objects.create(
             request_id=request_obj,
             step_id=current_step,
             action_by_user_id=staff_user,
@@ -390,6 +418,19 @@ def reject_payment(payment, staff_user, reason, data=None):
             request_obj.pk,
             "PAYMENT_REJECTED",
             {"rejection_reason": reason},
+        )
+        from apps.notifications.services import schedule_notification_dispatch
+        from apps.workflow.constants import NotificationEventCodes
+
+        schedule_notification_dispatch(
+            event_code=NotificationEventCodes.REQ_STATUS_UPDATED,
+            request_obj=request_obj,
+            event_identifier=f"WF_{history_entry.id}",
+            extra_context={
+                "previous_status": RequestStatuses.PAYMENT_PENDING,
+                "new_status": request_obj.current_status,
+                "remarks": reason,
+            },
         )
 
     payment.refresh_from_db()
