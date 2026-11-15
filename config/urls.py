@@ -40,4 +40,7 @@ urlpatterns = [
 
     # Role-scoped operational dashboard
     path("api/dashboard/", include("apps.dashboard.urls")),
+
+    # Reports
+    path("api/reports/", include("apps.reports.urls")),
 ]
