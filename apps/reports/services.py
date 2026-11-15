@@ -58,6 +58,7 @@ def get_scoped_request_queryset(user):
         'service_id',
         'service_id__service_department_id',
         'current_step_id',
+        'payment',
     )
 
     if not user.is_system_admin():
@@ -111,7 +112,7 @@ def apply_request_filters(qs, params, user):
 
     # Payment status filter
     payment_status = params.get('payment_status')
-    if payment_status:
+    if payment_status and payment_status.strip().upper() != 'ALL':
         qs = qs.filter(payment__payment_status__iexact=payment_status.strip())
 
     # Search filter
@@ -164,17 +165,19 @@ def calculate_revenue_report(user, params):
     )
 
     # Scoping for department users
+    effective_dept_id = None
     if not user.is_system_admin():
         dept = getattr(user, 'service_department_id', None)
-        dept_id = getattr(dept, 'id', None) if dept else None
-        if not dept_id:
+        effective_dept_id = getattr(dept, 'id', None) if dept else None
+        if not effective_dept_id:
             payments_qs = Payment.objects.none()
         else:
-            payments_qs = payments_qs.filter(request_id__service_id__service_department_id=dept_id)
+            payments_qs = payments_qs.filter(request_id__service_id__service_department_id=effective_dept_id)
     else:
         dept_id = params.get('service_department_id')
         if dept_id and str(dept_id).isdigit():
-            payments_qs = payments_qs.filter(request_id__service_id__service_department_id=int(dept_id))
+            effective_dept_id = int(dept_id)
+            payments_qs = payments_qs.filter(request_id__service_id__service_department_id=effective_dept_id)
 
     # Payment date filtering on paid_at
     if from_date:
@@ -183,12 +186,24 @@ def calculate_revenue_report(user, params):
         payments_qs = payments_qs.filter(paid_at__date__lte=to_date)
 
     service_id = params.get('service_id')
+    effective_service_id = None
     if service_id and str(service_id).isdigit():
-        payments_qs = payments_qs.filter(request_id__service_id=int(service_id))
+        candidate_service_id = int(service_id)
+        if user.is_system_admin() or Service.objects.filter(
+            pk=candidate_service_id,
+            service_department_id=effective_dept_id,
+        ).exists():
+            effective_service_id = candidate_service_id
+            payments_qs = payments_qs.filter(request_id__service_id=effective_service_id)
+        else:
+            payments_qs = Payment.objects.none()
 
     payment_method = params.get('payment_method')
-    if payment_method:
-        payments_qs = payments_qs.filter(payment_method__iexact=payment_method.strip())
+    if payment_method and payment_method.strip().upper() != 'ALL':
+        payment_method = payment_method.strip()
+        payments_qs = payments_qs.filter(payment_method__iexact=payment_method)
+    else:
+        payment_method = None
 
     # Overall Summary
     total_agg = payments_qs.aggregate(
@@ -248,9 +263,9 @@ def calculate_revenue_report(user, params):
         "filters_applied": {
             "from_date": params.get('from_date') or None,
             "to_date": params.get('to_date') or None,
-            "service_department_id": int(dept_id) if dept_id and str(dept_id).isdigit() else None,
-            "service_id": int(service_id) if service_id and str(service_id).isdigit() else None,
-            "payment_method": payment_method or None,
+            "service_department_id": effective_dept_id,
+            "service_id": effective_service_id,
+            "payment_method": payment_method,
         },
         "summary": {
             "total_revenue_collected": total_revenue_collected,

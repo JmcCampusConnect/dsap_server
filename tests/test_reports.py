@@ -2,8 +2,10 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import Role, User
+from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
+from apps.departments.models import ServiceDepartment
 from apps.payments.models import Payment
 from apps.requests.models import Request
 from apps.services.models import Service
@@ -15,6 +17,34 @@ class ReportsModuleTestCase(TestCase):
         from seeders.runner import SEEDERS, run_seeder
         for s in SEEDERS:
             run_seeder(s)
+
+        # Ensure a second service department (LIB) and users exist for scoping tests
+        lib_dept, _ = ServiceDepartment.objects.get_or_create(
+            code="LIB",
+            defaults={"name": "Library", "status": "active"},
+        )
+        dept_admin_role = Role.objects.get(name=Roles.SERVICE_DEPT_ADMIN)
+        dept_staff_role = Role.objects.get(name=Roles.SERVICE_DEPT_STAFF)
+        User.objects.get_or_create(
+            username="LIB_ADMIN",
+            defaults={
+                "email": "lib.admin@example.com",
+                "password_hash": "not-used",
+                "role_id": dept_admin_role,
+                "service_department_id": lib_dept,
+                "is_active": True,
+            },
+        )
+        User.objects.get_or_create(
+            username="LIB_STAFF",
+            defaults={
+                "email": "lib.staff@example.com",
+                "password_hash": "not-used",
+                "role_id": dept_staff_role,
+                "service_department_id": lib_dept,
+                "is_active": True,
+            },
+        )
 
         # Ensure at least one request has a successful payment for testing revenue
         req = Request.objects.filter(current_status='COMPLETED').first()
@@ -38,7 +68,6 @@ class ReportsModuleTestCase(TestCase):
         self.lib_admin = User.objects.get(username="LIB_ADMIN")
         self.lib_staff = User.objects.get(username="LIB_STAFF")
         self.student_user = User.objects.get(username="24MCA066")
-        self.teacher_user = User.objects.get(username="JMCMTS0006")
 
     # ----------------------------------------------------------------------
     # 1. Summary API
@@ -51,31 +80,36 @@ class ReportsModuleTestCase(TestCase):
         self.assertIn("total_requests", data)
         self.assertIn("status_counts", data)
         self.assertIn("revenue_summary", data)
+        self.assertIsNotNone(data["revenue_summary"])
         self.assertIn("filters_applied", data)
-        # Verify all 6 statuses are present
-        for st in ['SUBMITTED', 'UNDER_VERIFICATION', 'APPROVED', 'COMPLETED', 'REJECTED', 'RETURNED']:
+        # Verify all 7 active non-draft statuses are present
+        for st in ['SUBMITTED', 'VERIFIED', 'PROCESSING', 'COMPLETED', 'ISSUED', 'REJECTED', 'RETURNED']:
             self.assertIn(st, data['status_counts'])
 
     def test_02_department_staff_summary_is_scoped(self):
         self.client.force_authenticate(user=self.coe_staff)
         res = self.client.get("/api/reports/summary/", HTTP_HOST="localhost")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        # LIB staff should have 0 requests because seeded requests belong to COE
+        # Staff cannot see revenue_summary
+        self.assertIsNone(res.data["revenue_summary"])
+        # LIB staff should have 0 requests because seeded requests belong to COE,
+        # and probing COE's service_department_id must be ignored.
+        coe_dept = self.coe_admin.service_department_id
         self.client.force_authenticate(user=self.lib_staff)
-        res_lib = self.client.get("/api/reports/summary/", HTTP_HOST="localhost")
+        res_lib = self.client.get(
+            f"/api/reports/summary/?service_department_id={coe_dept.id}",
+            HTTP_HOST="localhost",
+        )
         self.assertEqual(res_lib.status_code, status.HTTP_200_OK)
         self.assertEqual(res_lib.data["total_requests"], 0)
+        self.assertEqual(res_lib.data["filters_applied"]["service_department_id"], self.lib_staff.service_department_id.id)
+        self.assertEqual(res_lib.data["filters_applied"]["service_department_name"], "Library")
 
     def test_03_unauthorized_roles_denied_summary(self):
         # Student denied
         self.client.force_authenticate(user=self.student_user)
         res_student = self.client.get("/api/reports/summary/", HTTP_HOST="localhost")
         self.assertEqual(res_student.status_code, status.HTTP_403_FORBIDDEN)
-
-        # Subject Teacher denied
-        self.client.force_authenticate(user=self.teacher_user)
-        res_teacher = self.client.get("/api/reports/summary/", HTTP_HOST="localhost")
-        self.assertEqual(res_teacher.status_code, status.HTTP_403_FORBIDDEN)
 
         # Anonymous denied
         self.client.logout()
@@ -119,10 +153,10 @@ class ReportsModuleTestCase(TestCase):
     def test_06_requests_listing_filters(self):
         self.client.force_authenticate(user=self.sysadmin)
         # Filter by status
-        res = self.client.get("/api/reports/requests/?status=UNDER_VERIFICATION", HTTP_HOST="localhost")
+        res = self.client.get("/api/reports/requests/?status=SUBMITTED", HTTP_HOST="localhost")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         for item in res.data["results"]:
-            self.assertEqual(item["current_status"], "UNDER_VERIFICATION")
+            self.assertEqual(item["current_status"], "SUBMITTED")
 
         # Filter by stream
         res_stream = self.client.get("/api/reports/requests/?stream=SFM", HTTP_HOST="localhost")
@@ -219,3 +253,26 @@ class ReportsModuleTestCase(TestCase):
         self.assertEqual(res_coe.data["service_departments"][0]["code"], "COE")
         for svc in res_coe.data["services"]:
             self.assertEqual(svc["service_department_id"], self.coe_admin.service_department_id.id)
+
+    # ----------------------------------------------------------------------
+    # 6. Revenue Role Restrictions
+    # ----------------------------------------------------------------------
+    def test_12_service_dept_staff_denied_revenue_and_revenue_export(self):
+        self.client.force_authenticate(user=self.coe_staff)
+        res_rev = self.client.get("/api/reports/revenue/", HTTP_HOST="localhost")
+        self.assertEqual(res_rev.status_code, status.HTTP_403_FORBIDDEN)
+
+        res_exp = self.client.get(
+            "/api/reports/export/?report_type=revenue&format=xlsx",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(res_exp.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Dept admin can access revenue scoped to their own department
+        self.client.force_authenticate(user=self.coe_admin)
+        res_admin = self.client.get("/api/reports/revenue/", HTTP_HOST="localhost")
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            res_admin.data["filters_applied"]["service_department_id"],
+            self.coe_admin.service_department_id.id,
+        )

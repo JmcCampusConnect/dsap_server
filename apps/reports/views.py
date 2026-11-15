@@ -11,14 +11,15 @@ from django.db.models import Count, Sum
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.role_constants import Roles
 from apps.departments.models import AcademicDepartment, ServiceDepartment
 from apps.payments.models import Payment
-from apps.reports.permissions import IsReportViewer
+from apps.reports.permissions import CanViewRevenueReport, IsReportViewer
 from apps.reports.serializers import (
     AcademicDepartmentMiniSerializer,
     RequestReportSerializer,
@@ -61,12 +62,13 @@ class ReportSummaryView(APIView):
         # 1. Total Requests
         total_requests = filtered_qs.count()
 
-        # 2. Status Counts (ensuring all 6 submission statuses are initialized)
+        # 2. Status Counts (ensuring all 7 non-draft statuses are initialized)
         status_counts = {
             RequestStatuses.SUBMITTED: 0,
-            RequestStatuses.UNDER_VERIFICATION: 0,
-            RequestStatuses.APPROVED: 0,
+            RequestStatuses.VERIFIED: 0,
+            RequestStatuses.PROCESSING: 0,
             RequestStatuses.COMPLETED: 0,
+            RequestStatuses.ISSUED: 0,
             RequestStatuses.REJECTED: 0,
             RequestStatuses.RETURNED: 0,
         }
@@ -79,30 +81,48 @@ class ReportSummaryView(APIView):
             if st in status_counts:
                 status_counts[st] = row['cnt']
 
-        # 3. Revenue Summary (linked to filtered requests)
-        payments = Payment.objects.filter(request_id__in=filtered_qs)
-        succ_payments = payments.filter(payment_status='SUCCESS')
-        pend_payments = payments.filter(payment_status='PENDING')
+        # 3. Revenue Summary (linked to filtered requests; hidden for SERVICE_DEPT_STAFF)
+        if user.has_role(Roles.SERVICE_DEPT_STAFF):
+            revenue_summary = None
+        else:
+            payments = Payment.objects.filter(request_id__in=filtered_qs)
+            succ_payments = payments.filter(payment_status='SUCCESS')
+            pend_payments = payments.filter(payment_status='PENDING')
 
-        total_collected = succ_payments.aggregate(s=Sum('amount'))['s'] or 0
-        successful_transactions = succ_payments.count()
-        pending_amount = pend_payments.aggregate(s=Sum('amount'))['s'] or 0
+            total_collected = succ_payments.aggregate(s=Sum('amount'))['s'] or 0
+            successful_transactions = succ_payments.count()
+            pending_amount = pend_payments.aggregate(s=Sum('amount'))['s'] or 0
+            revenue_summary = {
+                "total_collected": f"{total_collected:.2f}",
+                "successful_transactions": successful_transactions,
+                "pending_amount": f"{pending_amount:.2f}",
+            }
 
-        # 4. Resolve Names for filters_applied
-        dept_id = params.get('service_department_id')
+        # 4. Resolve Names for filters_applied (department-scoped for non-system admins)
+        if user.is_system_admin():
+            raw_dept_id = params.get('service_department_id')
+            effective_dept_id = int(raw_dept_id) if raw_dept_id and str(raw_dept_id).isdigit() else None
+        else:
+            effective_dept_id = getattr(user.service_department_id, 'id', None)
+
         service_id = params.get('service_id')
         acad_dept_id = params.get('academic_department_id')
 
         dept_name = None
-        if dept_id and str(dept_id).isdigit():
-            dept_obj = ServiceDepartment.objects.filter(pk=int(dept_id)).first()
+        if effective_dept_id:
+            dept_obj = ServiceDepartment.objects.filter(pk=effective_dept_id).first()
             if dept_obj:
                 dept_name = dept_obj.name
 
+        effective_service_id = None
         service_name = None
         if service_id and str(service_id).isdigit():
-            svc_obj = Service.objects.filter(pk=int(service_id)).first()
+            svc_qs = Service.objects.filter(pk=int(service_id))
+            if effective_dept_id and not user.is_system_admin():
+                svc_qs = svc_qs.filter(service_department_id=effective_dept_id)
+            svc_obj = svc_qs.first()
             if svc_obj:
+                effective_service_id = svc_obj.id
                 service_name = svc_obj.name
 
         acad_dept_name = None
@@ -115,9 +135,9 @@ class ReportSummaryView(APIView):
             "filters_applied": {
                 "from_date": params.get('from_date') or None,
                 "to_date": params.get('to_date') or None,
-                "service_department_id": int(dept_id) if dept_id and str(dept_id).isdigit() else None,
+                "service_department_id": effective_dept_id,
                 "service_department_name": dept_name,
-                "service_id": int(service_id) if service_id and str(service_id).isdigit() else None,
+                "service_id": effective_service_id,
                 "service_name": service_name,
                 "academic_department_id": int(acad_dept_id) if acad_dept_id and str(acad_dept_id).isdigit() else None,
                 "academic_department_name": acad_dept_name,
@@ -125,11 +145,7 @@ class ReportSummaryView(APIView):
             },
             "total_requests": total_requests,
             "status_counts": status_counts,
-            "revenue_summary": {
-                "total_collected": f"{total_collected:.2f}",
-                "successful_transactions": successful_transactions,
-                "pending_amount": f"{pending_amount:.2f}",
-            },
+            "revenue_summary": revenue_summary,
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -156,7 +172,7 @@ class RevenueReportView(APIView):
     Filtered by payment completion date (paid_at).
     """
 
-    permission_classes = [IsAuthenticated, IsReportViewer]
+    permission_classes = [IsAuthenticated, IsReportViewer, CanViewRevenueReport]
 
     def get(self, request):
         user = request.user
@@ -202,6 +218,14 @@ class ExportReportView(APIView):
                     "details": {
                         "format": [f"Unsupported export format '{export_format}'. Supported formats: 'xlsx', 'csv'."]
                     }
+                }
+            })
+
+        if report_type == 'revenue' and request.user.has_role(Roles.SERVICE_DEPT_STAFF):
+            raise PermissionDenied({
+                "error": {
+                    "code": "PERMISSION_DENIED",
+                    "message": "You do not have permission to export revenue reports."
                 }
             })
 
@@ -283,12 +307,13 @@ class ReportOptionsView(APIView):
         acad_qs = AcademicDepartment.objects.filter(status__iexact='active').order_by('code')
         academic_departments = AcademicDepartmentMiniSerializer(acad_qs, many=True).data
 
-        # 4. Request Statuses (active submission statuses)
+        # 4. Request Statuses (all non-draft workflow statuses)
         request_statuses = [
             RequestStatuses.SUBMITTED,
-            RequestStatuses.UNDER_VERIFICATION,
-            RequestStatuses.APPROVED,
+            RequestStatuses.VERIFIED,
+            RequestStatuses.PROCESSING,
             RequestStatuses.COMPLETED,
+            RequestStatuses.ISSUED,
             RequestStatuses.REJECTED,
             RequestStatuses.RETURNED,
         ]
