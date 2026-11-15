@@ -274,9 +274,6 @@ def confirm_payment(payment, staff_user, data):
             "action": PaymentVerificationLog.CONFIRM,
             "amount_received": received_amount,
             "payment_date": data["payment_date"],
-            "payment_mode": data["payment_mode"],
-            "bank_name": data["bank_name"].strip(),
-            "bank_branch": data.get("bank_branch", "").strip(),
             "receipt_number": (data.get("receipt_number") or "").strip() or None,
             "remarks": data.get("remarks", "").strip(),
             "reason": "",
@@ -288,10 +285,6 @@ def confirm_payment(payment, staff_user, data):
         locked_payment.payment_status = PaymentStatuses.SUCCESS
         locked_payment.amount_received = received_amount
         locked_payment.payment_date = data["payment_date"]
-        locked_payment.payment_mode = data["payment_mode"]
-        locked_payment.payment_method = data["payment_mode"]
-        locked_payment.bank_name = values["bank_name"]
-        locked_payment.bank_branch = values["bank_branch"]
         locked_payment.receipt_number = values["receipt_number"]
         locked_payment.remarks = values["remarks"]
         locked_payment.rejection_reason = ""
@@ -345,9 +338,6 @@ def reject_payment(payment, staff_user, reason, data=None):
             action=PaymentVerificationLog.REJECT,
             amount_received=data.get("amount_received"),
             payment_date=data.get("payment_date"),
-            payment_mode=data.get("payment_mode"),
-            bank_name=(data.get("bank_name") or "").strip(),
-            bank_branch=(data.get("bank_branch") or "").strip(),
             receipt_number=(data.get("receipt_number") or "").strip() or None,
             remarks=(data.get("remarks") or "").strip(),
             reason=reason,
