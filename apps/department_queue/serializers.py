@@ -83,7 +83,6 @@ class QueuePaymentSerializer(serializers.ModelSerializer):
             'id',
             'amount',
             'payment_status',
-            'payment_method',
             'paid_at',
         ]
 

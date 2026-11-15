@@ -21,7 +21,6 @@ def run() -> dict[str, Any]:
 
     departments = [
         {"code": "COE", "name": "Controller of Examinations", "status": True},
-        {"code": "LIB", "name": "Library", "status": True},
     ]
 
     created = 0
