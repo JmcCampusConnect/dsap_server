@@ -193,19 +193,25 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             base_qs.values("stream", "type", "category", "degree", "branch", "code").distinct()
         )
 
-        streams = list(base_qs.exclude(stream="").values_list("stream", flat=True).distinct())
+        model_streams = [choice[0] for choice in AcademicDepartment.STREAM_CHOICES]
+        db_streams = list(base_qs.exclude(stream="").values_list("stream", flat=True).distinct())
+        streams = sorted(list(set(model_streams) | set(db_streams)))
 
+        model_types = [choice[0] for choice in AcademicDepartment.TYPE_CHOICES]
         type_qs = base_qs.exclude(type="")
         if stream_filter:
             type_qs = type_qs.filter(stream=stream_filter)
-        types = list(type_qs.values_list("type", flat=True).distinct())
+        db_types = list(type_qs.values_list("type", flat=True).distinct())
+        types = sorted(list(set(model_types) | set(db_types))) if not stream_filter else (db_types or model_types)
 
+        model_categories = [choice[0] for choice in AcademicDepartment.CATEGORY_CHOICES]
         cat_qs = base_qs.exclude(category="")
         if stream_filter:
             cat_qs = cat_qs.filter(stream=stream_filter)
         if type_filter:
             cat_qs = cat_qs.filter(type=type_filter)
-        categories = list(cat_qs.values_list("category", flat=True).distinct())
+        db_categories = list(cat_qs.values_list("category", flat=True).distinct())
+        categories = sorted(list(set(model_categories) | set(db_categories))) if not (stream_filter or type_filter) else (db_categories or model_categories)
 
         deg_qs = base_qs.exclude(degree="")
         if stream_filter:
