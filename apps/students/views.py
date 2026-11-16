@@ -17,6 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.models import Role, User
+from apps.accounts.serializers import ResetPasswordSerializer
 from apps.audit.models import AuditLog
 from apps.departments.models import AcademicDepartment
 from common.pagination import StandardPagination
@@ -391,6 +392,31 @@ class StudentViewSet(viewsets.ModelViewSet):
         )
         return Response(
             {'message': 'Student activated successfully.'},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'], url_path='reset-password')
+    def reset_password(self, request, pk=None):
+        instance = self.get_object()
+
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if instance.user_id:
+            instance.user_id.password_hash = make_password(
+                serializer.validated_data['password']
+            )
+            instance.user_id.save(update_fields=['password_hash', 'updated_at'])
+
+        AuditLog.log(
+            request=request,
+            action='UPDATE',
+            obj=instance,
+            object_id=instance.pk,
+            changes={'password': 'Password reset'},
+        )
+        return Response(
+            {'message': 'Password reset successfully.'},
             status=status.HTTP_200_OK,
         )
 

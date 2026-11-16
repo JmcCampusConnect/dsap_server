@@ -22,6 +22,8 @@ class StudentSerializer(serializers.ModelSerializer):
     )
     user_id = serializers.IntegerField(source='user_id_id', read_only=True)
     academic_department_name = serializers.SerializerMethodField()
+    graduate = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=False, allow_null=True, write_only=True)
     role_id = serializers.PrimaryKeyRelatedField(
         queryset=Role.objects.filter(name=Roles.STUDENT),
@@ -39,6 +41,8 @@ class StudentSerializer(serializers.ModelSerializer):
             'user_id',
             'academic_department_id',
             'academic_department_name',
+            'graduate',
+            'department_name',
             'year_of_admission',
             'dob',
             'section',
@@ -64,6 +68,14 @@ class StudentSerializer(serializers.ModelSerializer):
             return None
         parts = [department.code, department.degree, department.branch]
         return ' - '.join(part for part in parts if part)
+
+    def get_graduate(self, obj):
+        department = getattr(obj, 'academic_department_id', None)
+        return getattr(department, 'type', None)
+
+    def get_department_name(self, obj):
+        department = getattr(obj, 'academic_department_id', None)
+        return getattr(department, 'code', None)
 
     def _get_student_role(self, role_obj):
         if role_obj is not None:
