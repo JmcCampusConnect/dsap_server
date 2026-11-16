@@ -458,7 +458,6 @@ class StudentRequestViewSet(viewsets.GenericViewSet):
             'fee_amount': str(payment.amount),
             'payment_status': payment.payment_status,
             'department_name': department.name,
-            'payment_due_at': payment.payment_due_at,
             'instructions': [
                 'Collect the official physical challan from the department office.',
                 'Complete the challan and pay the fee at the bank.',

@@ -134,7 +134,6 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(request.current_status, "PAYMENT_PENDING")
         self.assertEqual(request.current_step_id, self.payment_step)
         self.assertEqual(payment.payment_status, "PENDING")
-        self.assertIsNone(payment.payment_due_at)
 
     def test_submit_api_requires_ack_and_returns_offline_payment_instructions(self):
         request, _ = self.create_draft()
@@ -159,6 +158,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(accepted.data["current_status"], "PAYMENT_PENDING")
         self.assertEqual(accepted.data["submission"]["fee_amount"], "125.00")
         self.assertEqual(len(accepted.data["submission"]["instructions"]), 3)
+        self.assertNotIn("payment_due_at", accepted.data["submission"])
         self.assertNotIn("office_address", accepted.data["submission"])
         self.assertNotIn(
             "office_address", accepted.data["service"]["department"]
@@ -235,6 +235,8 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["amount_received"], "125.00")
         self.assertEqual(response.data["receipt_number"], "CHALLAN-001")
+        self.assertEqual(response.data["service_code"], request.service_id.code)
+        self.assertEqual(response.data["current_step_name"], self.verification_step.step_name)
         self.assertNotIn("gateway_txn_id", response.data)
         self.assertNotIn("payment_method", response.data)
         self.assertNotIn("payment_mode", response.data)
@@ -375,16 +377,10 @@ class OfflinePaymentFlowTestCase(TestCase):
             [item["request_number"] for item in response.data["results"]],
             [own_request.request_number],
         )
-
-    def test_new_offline_payment_does_not_assign_a_due_date(self):
-        request, payment = self.create_draft()
-        submit_request(
-            request,
-            submitted_by=self.staff,
-            offline_payment_acknowledged=True,
+        self.assertEqual(
+            response.data["results"][0]["service_code"],
+            own_request.service_id.code,
         )
-        payment.refresh_from_db()
-        self.assertIsNone(payment.payment_due_at)
 
     def test_department_admin_can_update_only_own_department_profile(self):
         admin_role = Role.objects.create(name="SERVICE_DEPT_ADMIN")

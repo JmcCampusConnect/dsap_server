@@ -52,9 +52,6 @@ class Payment(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
     remarks = models.TextField(blank=True)
     rejection_reason = models.TextField(blank=True)
-    reminder_count = models.PositiveSmallIntegerField(default=0)
-    last_reminder_at = models.DateTimeField(null=True, blank=True)
-    payment_due_at = models.DateTimeField(null=True, blank=True)
 
     paid_at = models.DateTimeField(
         null=True,
@@ -67,9 +64,6 @@ class Payment(models.Model):
 
     class Meta:
         db_table = 'payment'
-        indexes = [
-            models.Index(fields=["payment_status", "last_reminder_at"]),
-        ]
 
     def __str__(self):
         return f"{self.request_id} - {self.payment_status}"

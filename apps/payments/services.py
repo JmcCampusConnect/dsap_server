@@ -133,7 +133,6 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
                 )
             step = _payment_step(locked_request)
             payment.payment_status = PaymentStatuses.PENDING
-            payment.payment_due_at = None
             locked_request.current_status = RequestStatuses.PAYMENT_PENDING
             event_code = "PAYMENT_PENDING"
         else:
@@ -151,7 +150,6 @@ def submit_request(request_obj, *, submitted_by, offline_payment_acknowledged=Fa
                 )
             payment.payment_status = PaymentStatuses.SUCCESS
             payment.paid_at = now
-            payment.payment_due_at = None
             locked_request.current_status = RequestStatuses.SUBMITTED
             event_code = None
 

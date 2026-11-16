@@ -40,6 +40,7 @@ class PaymentViewSet(GenericViewSet):
             "request_id__student_id",
             "request_id__service_id",
             "request_id__service_id__service_department_id",
+            "request_id__current_step_id",
             "verified_by",
         ).prefetch_related("verification_history__acted_by")
 

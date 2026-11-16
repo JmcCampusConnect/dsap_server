@@ -58,6 +58,9 @@ class PaymentListSerializer(serializers.ModelSerializer):
     service_name = serializers.CharField(
         source="request_id.service_id.name", read_only=True
     )
+    service_code = serializers.CharField(
+        source="request_id.service_id.code", read_only=True
+    )
     service_id = serializers.IntegerField(
         source="request_id.service_id_id", read_only=True
     )
@@ -81,13 +84,13 @@ class PaymentListSerializer(serializers.ModelSerializer):
             "register_number",
             "service_id",
             "service_name",
+            "service_code",
             "department_name",
             "request_status",
             "amount",
             "amount_received",
             "payment_status",
             "payment_date",
-            "payment_due_at",
             "submitted_at",
             "created_at",
         ]
@@ -95,8 +98,10 @@ class PaymentListSerializer(serializers.ModelSerializer):
 
 class PaymentDetailSerializer(PaymentListSerializer):
     verification_history = PaymentVerificationHistorySerializer(many=True, read_only=True)
-    payment_due_date = serializers.DateTimeField(
-        source="payment_due_at", read_only=True
+    current_step_name = serializers.CharField(
+        source="request_id.current_step_id.step_name",
+        read_only=True,
+        allow_null=True,
     )
     verified_by_name = serializers.CharField(
         source="verified_by.username", read_only=True, allow_null=True
@@ -104,14 +109,12 @@ class PaymentDetailSerializer(PaymentListSerializer):
 
     class Meta(PaymentListSerializer.Meta):
         fields = PaymentListSerializer.Meta.fields + [
+            "current_step_name",
             "receipt_number",
             "verified_by",
             "verified_by_name",
             "verified_at",
             "remarks",
             "rejection_reason",
-            "reminder_count",
-            "last_reminder_at",
-            "payment_due_date",
             "verification_history",
         ]
