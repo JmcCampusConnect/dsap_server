@@ -25,7 +25,6 @@ SEEDERS = [
     "workflow_seeder",
     "notification_template_seeder",
     "student_seeder",
-    "request_seeder",
 ]
 
 

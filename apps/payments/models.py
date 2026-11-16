@@ -10,13 +10,6 @@ class PaymentStatuses:
 
 
 class Payment(models.Model):
-    PAYMENT_MODE_CHOICES = [
-        ("CASH", "Cash"),
-        ("DD", "Demand draft"),
-        ("CHEQUE", "Cheque"),
-        ("BANK_COUNTER", "Bank counter"),
-    ]
-
     id = models.BigAutoField(primary_key=True)
 
     request_id = models.OneToOneField(
@@ -30,19 +23,6 @@ class Payment(models.Model):
         decimal_places=2
     )
 
-    gateway_txn_id = models.CharField(
-        max_length=100,
-        unique=True,
-        null=True,
-        blank=True
-    )
-
-    payment_method = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True
-    )
-
     payment_status = models.CharField(
         max_length=20,
         choices=[
@@ -53,13 +33,6 @@ class Payment(models.Model):
         default=PaymentStatuses.PENDING,
     )
 
-    payment_mode = models.CharField(
-        max_length=20,
-        choices=PAYMENT_MODE_CHOICES,
-        null=True,
-        blank=True,
-    )
-
     amount_received = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -68,8 +41,6 @@ class Payment(models.Model):
     )
 
     payment_date = models.DateField(null=True, blank=True)
-    bank_name = models.CharField(max_length=150, blank=True)
-    bank_branch = models.CharField(max_length=150, blank=True)
     receipt_number = models.CharField(max_length=100, null=True, blank=True)
     verified_by = models.ForeignKey(
         "accounts.User",
@@ -129,14 +100,6 @@ class PaymentVerificationLog(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True
     )
     payment_date = models.DateField(null=True, blank=True)
-    payment_mode = models.CharField(
-        max_length=20,
-        choices=Payment.PAYMENT_MODE_CHOICES,
-        null=True,
-        blank=True,
-    )
-    bank_name = models.CharField(max_length=150, blank=True)
-    bank_branch = models.CharField(max_length=150, blank=True)
     receipt_number = models.CharField(max_length=100, null=True, blank=True)
     remarks = models.TextField(blank=True)
     reason = models.TextField(blank=True)

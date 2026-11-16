@@ -9,19 +9,10 @@ class PaymentConfirmSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, min_value=Decimal("0.01")
     )
     payment_date = serializers.DateField()
-    payment_mode = serializers.ChoiceField(choices=Payment.PAYMENT_MODE_CHOICES)
-    bank_name = serializers.CharField(max_length=150)
-    bank_branch = serializers.CharField(max_length=150, required=False, allow_blank=True)
     receipt_number = serializers.CharField(
         max_length=100, required=False, allow_blank=True
     )
     remarks = serializers.CharField(required=False, allow_blank=True)
-
-    def validate_bank_name(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Bank name is required.")
-        return value
 
 
 class PaymentRejectSerializer(serializers.Serializer):
@@ -45,9 +36,6 @@ class PaymentVerificationHistorySerializer(serializers.ModelSerializer):
             "action",
             "amount_received",
             "payment_date",
-            "payment_mode",
-            "bank_name",
-            "bank_branch",
             "receipt_number",
             "remarks",
             "reason",
@@ -116,9 +104,6 @@ class PaymentDetailSerializer(PaymentListSerializer):
 
     class Meta(PaymentListSerializer.Meta):
         fields = PaymentListSerializer.Meta.fields + [
-            "payment_mode",
-            "bank_name",
-            "bank_branch",
             "receipt_number",
             "verified_by",
             "verified_by_name",

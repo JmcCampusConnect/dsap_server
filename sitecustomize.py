@@ -8,8 +8,26 @@ that package needs so encrypted model fields can keep working in this codebase.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import sys
 import types
+
+# Ensure PostgreSQL client library (libpq) is discoverable by psycopg on Windows
+if sys.platform == 'win32':
+    pg_base = Path(r'C:\Program Files\PostgreSQL')
+    if pg_base.is_dir():
+        for version_dir in sorted(pg_base.iterdir(), reverse=True):
+            bin_dir = version_dir / 'bin'
+            if (bin_dir / 'libpq.dll').is_file():
+                candidate = str(bin_dir)
+                if candidate not in os.environ.get('PATH', ''):
+                    os.environ['PATH'] = candidate + os.pathsep + os.environ.get('PATH', '')
+                try:
+                    os.add_dll_directory(candidate)
+                except OSError:
+                    pass
+                break
 
 
 def _make_base62_module() -> types.ModuleType:

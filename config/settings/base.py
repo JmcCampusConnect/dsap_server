@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
@@ -36,6 +37,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.audit',
     'apps.students',
+    'apps.profile',
     'apps.departments',
     'apps.services',
     'apps.workflow',
@@ -95,6 +97,22 @@ CSP_REPORT_ONLY = True
 CSP_REPORT_URI = "/api/csp-report/"
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+# Ensure PostgreSQL client library (libpq) is discoverable on Windows
+if sys.platform == 'win32':
+    pg_base = Path(r'C:\Program Files\PostgreSQL')
+    if pg_base.is_dir():
+        for version_dir in sorted(pg_base.iterdir(), reverse=True):
+            bin_dir = version_dir / 'bin'
+            if (bin_dir / 'libpq.dll').is_file():
+                candidate = str(bin_dir)
+                if candidate not in os.environ.get('PATH', ''):
+                    os.environ['PATH'] = candidate + os.pathsep + os.environ.get('PATH', '')
+                try:
+                    os.add_dll_directory(candidate)
+                except OSError:
+                    pass
+                break
 
 DATABASES = {
     "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
