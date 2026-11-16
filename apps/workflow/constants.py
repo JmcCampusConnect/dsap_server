@@ -123,6 +123,19 @@ class NotificationEventCodes:
     REQ_RETURNED = "REQ_RETURNED"
     REQ_REJECTED = "REQ_REJECTED"
     REQ_FORWARDED = "REQ_FORWARDED"
+    REQ_STATUS_UPDATED = "REQ_STATUS_UPDATED"
+
+    @classmethod
+    def supported(cls):
+        return (
+            cls.REQ_SUBMITTED,
+            cls.REQ_UNDER_VERIFICATION,
+            cls.REQ_COMPLETED,
+            cls.REQ_ISSUED,
+            cls.REQ_RETURNED,
+            cls.REQ_REJECTED,
+            cls.REQ_STATUS_UPDATED,
+        )
 
     # Map action -> event_code for automatic template lookup
     ACTION_EVENT_MAP = {

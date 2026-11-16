@@ -318,7 +318,7 @@ class DeptQueueViewSet(GenericViewSet):
 
     def _record_history(self, request_obj, step, action_code, remarks):
         """Create a WorkflowHistory record for the current transition."""
-        WorkflowHistory.objects.create(
+        return WorkflowHistory.objects.create(
             request_id=request_obj,
             step_id=step,
             action_by_user_id=self.request.user,
@@ -433,6 +433,7 @@ class DeptQueueViewSet(GenericViewSet):
 
         with transaction.atomic():
             request_obj = Request.objects.select_for_update().get(pk=request_obj.pk)
+            previous_status = request_obj.current_status
             if request_obj.current_status not in (
                 RequestStatuses.SUBMITTED,
                 RequestStatuses.VERIFIED,
@@ -477,6 +478,27 @@ class DeptQueueViewSet(GenericViewSet):
             elif request_obj.current_status == RequestStatuses.VERIFIED:
                 request_obj.current_status = RequestStatuses.SUBMITTED
                 request_obj.save(update_fields=['current_status', 'updated_at'])
+
+            if request_obj.current_status != previous_status:
+                history_record = self._record_history(
+                    request_obj,
+                    request_obj.current_step_id,
+                    'STATUS_UPDATE',
+                    remarks or 'Request status changed after document verification.',
+                )
+                from apps.notifications.services import schedule_notification_dispatch
+                from apps.workflow.constants import NotificationEventCodes
+
+                schedule_notification_dispatch(
+                    event_code=NotificationEventCodes.REQ_STATUS_UPDATED,
+                    request_obj=request_obj,
+                    event_identifier=f'WF_{history_record.id}',
+                    extra_context={
+                        'previous_status': previous_status,
+                        'new_status': request_obj.current_status,
+                        'remarks': remarks or 'Request status changed after document verification.',
+                    },
+                )
 
         from .serializers import QueueDocumentSerializer
         return Response(QueueDocumentSerializer(document).data, status=status.HTTP_200_OK)
@@ -552,14 +574,21 @@ class DeptQueueViewSet(GenericViewSet):
         remarks = serializer.validated_data.get('remarks', '')
 
         with transaction.atomic():
+            previous_status = request_obj.current_status
             request_obj.current_step_id = next_step
             request_obj.current_status = _status_for_step(
                 next_step,
                 documents_verified=True,
             )
             request_obj.save(update_fields=['current_step_id', 'current_status', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.FORWARD, remarks)
-            send_workflow_notification(request_obj, AllowedActions.FORWARD)
+            history_record = self._record_history(request_obj, current_step, AllowedActions.FORWARD, remarks)
+            send_workflow_notification(
+                request_obj,
+                AllowedActions.FORWARD,
+                history_obj=history_record,
+                previous_status=previous_status,
+                remarks=remarks,
+            )
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,
@@ -586,11 +615,18 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
+            previous_status = request_obj.current_status
             request_obj.current_status = RequestStatuses.RETURNED
             # Keep current_step_id so when student resubmits it lands in the right step
             request_obj.save(update_fields=['current_status', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.RETURN, remarks)
-            send_workflow_notification(request_obj, AllowedActions.RETURN)
+            history_record = self._record_history(request_obj, current_step, AllowedActions.RETURN, remarks)
+            send_workflow_notification(
+                request_obj,
+                AllowedActions.RETURN,
+                history_obj=history_record,
+                previous_status=previous_status,
+                remarks=remarks,
+            )
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,
@@ -618,11 +654,18 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
+            previous_status = request_obj.current_status
             request_obj.current_status = RequestStatuses.REJECTED
             request_obj.completed_at = timezone.now()
             request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.REJECT, remarks)
-            send_workflow_notification(request_obj, AllowedActions.REJECT)
+            history_record = self._record_history(request_obj, current_step, AllowedActions.REJECT, remarks)
+            send_workflow_notification(
+                request_obj,
+                AllowedActions.REJECT,
+                history_obj=history_record,
+                previous_status=previous_status,
+                remarks=remarks,
+            )
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,
@@ -659,11 +702,18 @@ class DeptQueueViewSet(GenericViewSet):
             })
 
         with transaction.atomic():
+            previous_status = request_obj.current_status
             request_obj.current_step_id = next_step
             request_obj.current_status = RequestStatuses.COMPLETED
             request_obj.save(update_fields=['current_step_id', 'current_status', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.COMPLETE, remarks)
-            send_workflow_notification(request_obj, AllowedActions.COMPLETE)
+            history_record = self._record_history(request_obj, current_step, AllowedActions.COMPLETE, remarks)
+            send_workflow_notification(
+                request_obj,
+                AllowedActions.COMPLETE,
+                history_obj=history_record,
+                previous_status=previous_status,
+                remarks=remarks,
+            )
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,
@@ -682,11 +732,18 @@ class DeptQueueViewSet(GenericViewSet):
         current_step = request_obj.current_step_id
 
         with transaction.atomic():
+            previous_status = request_obj.current_status
             request_obj.current_status = RequestStatuses.ISSUED
             request_obj.completed_at = timezone.now()
             request_obj.save(update_fields=['current_status', 'completed_at', 'updated_at'])
-            self._record_history(request_obj, current_step, AllowedActions.ISSUE, remarks)
-            send_workflow_notification(request_obj, AllowedActions.ISSUE)
+            history_record = self._record_history(request_obj, current_step, AllowedActions.ISSUE, remarks)
+            send_workflow_notification(
+                request_obj,
+                AllowedActions.ISSUE,
+                history_obj=history_record,
+                previous_status=previous_status,
+                remarks=remarks,
+            )
 
         return Response(
             DeptQueueDetailSerializer(request_obj).data,

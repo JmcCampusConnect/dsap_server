@@ -23,6 +23,7 @@ SEEDERS = [
     "service_field_seeder",
     "service_document_seeder",
     "workflow_seeder",
+    "notification_template_seeder",
     "student_seeder",
 ]
 

@@ -1,66 +1,69 @@
 """
 Department Queue — Notification Service
-Generates student notifications for workflow transitions using existing
-NotificationTemplate records. Follows the same creation pattern as the
-request_seeder so behaviour is consistent across the system.
+Bridges department queue workflow actions with the central notification system.
+Enforces transaction safety (on_commit), event-specific idempotency,
+and accurate status/remarks resolution.
 """
+
 import logging
 
-from apps.notifications.models import Notification, NotificationTemplate
+from apps.notifications.services import schedule_notification_dispatch
 from apps.workflow.constants import NotificationEventCodes
+from apps.workflow.models import WorkflowHistory
 
 logger = logging.getLogger(__name__)
 
 
-def send_workflow_notification(request_obj, action: str) -> None:
+def send_workflow_notification(
+    request_obj,
+    action: str,
+    history_obj: WorkflowHistory | None = None,
+    previous_status: str | None = None,
+    remarks: str | None = None,
+) -> None:
     """
-    Look up the NotificationTemplate for *action* and create a Notification
-    record for the student who owns *request_obj*.
-
-    Missing templates are logged as a warning but never raise — a failed
-    notification must never roll back a completed workflow transition.
+    Trigger an email notification for a workflow transition.
+    - Resolves event code from action.
+    - Captures stable event_identifier from WorkflowHistory.
+    - Captures previous_status and new_status accurately.
+    - Schedules dispatch to execute strictly after transaction commit.
+    - Safe against exceptions (never breaks the workflow transition).
     """
     event_code = NotificationEventCodes.ACTION_EVENT_MAP.get(action)
     if not event_code:
-        return  # Actions without a notification mapping are intentionally silent.
+        # Action has no corresponding notification event
+        return
 
-    student_user = None
     try:
-        student_user = request_obj.student_id.user_id
-    except Exception:
-        logger.warning(
-            "send_workflow_notification: could not resolve student user for request %s",
-            request_obj.id,
-        )
-        return
-
-    templates = list(
-        NotificationTemplate.objects.filter(event_code=event_code)
-    )
-
-    if not templates:
-        logger.warning(
-            "send_workflow_notification: no NotificationTemplate found for event_code=%s; "
-            "skipping notification for request %s.",
-            event_code,
-            request_obj.id,
-        )
-        return
-
-    for template in templates:
-        try:
-            Notification.objects.create(
-                request_id=request_obj,
-                user_id=student_user,
-                channel=template.channel,
-                template_id=template,
-                status="QUEUED",
+        # Resolve or find the corresponding WorkflowHistory record
+        if not history_obj and request_obj and getattr(request_obj, "id", None):
+            history_obj = (
+                WorkflowHistory.objects.filter(request_id=request_obj, action=action)
+                .order_by("-id")
+                .first()
             )
-        except Exception:
-            logger.exception(
-                "send_workflow_notification: failed to create notification "
-                "for request %s, event_code=%s, channel=%s",
-                request_obj.id,
-                event_code,
-                template.channel,
-            )
+
+        event_identifier = f"WF_{history_obj.id}" if history_obj else f"REQ_{request_obj.id}_{action}"
+        resolved_remarks = remarks
+        if resolved_remarks is None and history_obj:
+            resolved_remarks = history_obj.remarks or ""
+
+        extra_context = {
+            "previous_status": previous_status or "",
+            "new_status": getattr(request_obj, "current_status", ""),
+            "remarks": resolved_remarks or "",
+        }
+
+        schedule_notification_dispatch(
+            event_code=event_code,
+            request_obj=request_obj,
+            event_identifier=event_identifier,
+            extra_context=extra_context,
+        )
+    except Exception as exc:
+        logger.exception(
+            "send_workflow_notification: failed to schedule notification for request %s, action %s: %s",
+            getattr(request_obj, "id", None),
+            action,
+            exc,
+        )
