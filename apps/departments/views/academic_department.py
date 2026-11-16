@@ -8,9 +8,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.models import User
 from apps.accounts.permissions import IsSystemAdmin
-from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from apps.departments.models import AcademicDepartment
 from apps.departments.serializers import AcademicDepartmentSerializer
@@ -113,17 +111,6 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Soft delete (Deactivate) Academic Department."""
         instance = self.get_object()
-
-        if User.objects.filter(academic_department_id=instance).exists():
-            return Response(
-                {
-                    "detail": (
-                        "Academic Department cannot be deactivated because "
-                        "it is assigned to one or more users."
-                    )
-                },
-                status=status.HTTP_409_CONFLICT
-            )
 
         snapshot = self.get_serializer(instance).data
         object_id = instance.pk
