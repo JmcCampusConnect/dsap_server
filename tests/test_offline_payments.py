@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
+from apps.accounts.role_constants import get_accessible_menus
 from apps.departments.models import AcademicDepartment, ServiceDepartment
 from apps.payments.models import Payment, PaymentStatuses, PaymentVerificationLog
 from apps.payments.services import (
@@ -384,6 +385,102 @@ class OfflinePaymentFlowTestCase(TestCase):
             response.data["results"][0]["service_code"],
             own_request.service_id.code,
         )
+
+    def test_payment_history_menu_is_granted_to_admin_staff_and_system_admin(self):
+        for role_name in (
+            "SERVICE_DEPT_ADMIN",
+            "SERVICE_DEPT_STAFF",
+            "SYSTEM_ADMIN",
+            "STUDENT",
+        ):
+            with self.subTest(role=role_name):
+                self.assertIn("payment_history", get_accessible_menus(role_name))
+
+    def test_payment_history_is_department_scoped_and_includes_completed_payments(self):
+        other_department = ServiceDepartment.objects.create(
+            code="PAY-OTHER",
+            name="Other Payment Department",
+        )
+        other_service = Service.objects.create(
+            code="PAY-OTHER",
+            name="Other Paid Service",
+            service_department_id=other_department,
+            base_fee=Decimal("20.00"),
+        )
+        own_request, own_payment = self.create_draft("PAY-HISTORY-OWN")
+        own_payment.payment_status = PaymentStatuses.SUCCESS
+        own_payment.save(update_fields=["payment_status"])
+        other_request, other_payment = self.create_draft(
+            "PAY-HISTORY-OTHER",
+            service=other_service,
+        )
+
+        admin_role = Role.objects.create(name="SERVICE_DEPT_ADMIN")
+        department_admin = User.objects.create(
+            username="payment-history-admin",
+            email="payment-history-admin@example.test",
+            password_hash="not-a-real-password",
+            role_id=admin_role,
+            service_department_id=self.department,
+        )
+
+        for user in (self.staff, department_admin):
+            with self.subTest(role=user.role_name):
+                self.client.force_authenticate(user=user)
+                response = self.client.get(
+                    "/api/payments/history/",
+                    HTTP_HOST="localhost",
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    [item["request_number"] for item in response.data["results"]],
+                    [own_request.request_number],
+                )
+                self.assertEqual(
+                    response.data["results"][0]["payment_status"],
+                    PaymentStatuses.SUCCESS,
+                )
+                own_detail = self.client.get(
+                    f"/api/payments/{own_payment.pk}/",
+                    HTTP_HOST="localhost",
+                )
+                other_detail = self.client.get(
+                    f"/api/payments/{other_payment.pk}/",
+                    HTTP_HOST="localhost",
+                )
+                self.assertEqual(own_detail.status_code, 200)
+                self.assertEqual(other_detail.status_code, 403)
+
+        system_admin_role = Role.objects.create(name="SYSTEM_ADMIN")
+        system_admin = User.objects.create(
+            username="payment-history-system-admin",
+            email="payment-history-system-admin@example.test",
+            password_hash="not-a-real-password",
+            role_id=system_admin_role,
+        )
+        self.client.force_authenticate(user=system_admin)
+        response = self.client.get("/api/payments/history/", HTTP_HOST="localhost")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["request_number"] for item in response.data["results"]},
+            {own_request.request_number, other_request.request_number},
+        )
+
+    def test_payment_history_endpoint_is_read_only(self):
+        _, payment = self.create_draft("PAY-HISTORY-READONLY")
+        self.client.force_authenticate(user=self.staff)
+
+        for method in ("post", "put", "patch", "delete"):
+            with self.subTest(method=method):
+                response = getattr(self.client, method)(
+                    "/api/payments/history/",
+                    {"payment_status": PaymentStatuses.SUCCESS},
+                    format="json",
+                    HTTP_HOST="localhost",
+                )
+                self.assertEqual(response.status_code, 405)
+        payment.refresh_from_db()
+        self.assertEqual(payment.payment_status, PaymentStatuses.PENDING)
 
     def test_department_admin_can_update_only_own_department_profile(self):
         admin_role = Role.objects.create(name="SERVICE_DEPT_ADMIN")

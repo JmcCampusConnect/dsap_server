@@ -36,7 +36,12 @@ MENU_ACCESS_CONFIG = {
     "service_directory": [Roles.STUDENT],
     "my_requests": [Roles.STUDENT],
     "service_requests": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
-    "payment_history": [Roles.STUDENT, Roles.SYSTEM_ADMIN],
+    "payment_history": [
+        Roles.STUDENT,
+        Roles.SYSTEM_ADMIN,
+        Roles.SERVICE_DEPT_ADMIN,
+        Roles.SERVICE_DEPT_STAFF,
+    ],
     
     # Management
     "student_management": [Roles.SYSTEM_ADMIN],
