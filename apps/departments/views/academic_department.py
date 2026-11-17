@@ -24,8 +24,10 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
         status_filter = self.request.query_params.get("status", "").strip().lower()
 
-        if status_filter in ("active", "inactive"):
-            qs = AcademicDepartment.objects.filter(status=status_filter)
+        if status_filter == "active":
+            qs = AcademicDepartment.objects.filter(status__iexact="active")
+        elif status_filter == "inactive":
+            qs = AcademicDepartment.objects.exclude(status__iexact="active")
         else:
             qs = AcademicDepartment.objects.all()
 
@@ -133,25 +135,54 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="activate")
     def activate(self, request, pk=None):
-        instance = AcademicDepartment.objects.filter(
-            pk=pk,
-            status='inactive'
-        ).first()
+        instance = self.get_object()
 
-        if not instance:
+        current_status = str(instance.status or '').strip().lower()
+        if current_status == 'active':
             return Response(
-                {"detail": "Academic Department is not inactive or does not exist."},
+                {"detail": "Academic Department is already active."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Pre-check if another active department with the same (code, stream) exists
+        conflict = AcademicDepartment.objects.filter(
+            code__iexact=instance.code,
+            stream__iexact=instance.stream,
+            status__iexact='active'
+        ).exclude(pk=instance.pk).first()
+
+        if conflict:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot activate department '{instance.code}' ({instance.stream}) "
+                        f"because an active department with this code and stream already exists."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
             )
 
         old_status = instance.status
         instance.status = 'active'
-        instance.save(update_fields=['status', 'updated_at'])
+
+        try:
+            instance.save(update_fields=['status', 'updated_at'])
+        except IntegrityError:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot activate department '{instance.code}' ({instance.stream}) "
+                        f"due to a conflict with an existing record."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
 
         AuditLog.log(
             request=request,
             action='ACTIVATE',
             obj=instance,
+            object_id=instance.pk,
             changes={
                 'status': {
                     'old': old_status,
@@ -254,6 +285,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category", "Status"]   
         ws.append(headers)
         for dept in qs:
+            is_dept_active = str(dept.status or '').strip().lower() == 'active'
             ws.append([
                 dept.code,
                 dept.stream,
@@ -261,7 +293,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 dept.branch,
                 dept.type,
                 dept.category,
-                dept.status,
+                "Active" if is_dept_active else "Inactive",
             ])
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

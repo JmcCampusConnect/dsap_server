@@ -120,3 +120,9 @@ class AcademicDepartmentSerializer(serializers.ModelSerializer):
                     "code": ["Academic department already exists."]
                 })
         return data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        raw_status = str(instance.status or '').strip().lower()
+        data['status'] = 'active' if raw_status == 'active' else 'inactive'
+        return data
