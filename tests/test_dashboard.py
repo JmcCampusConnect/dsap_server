@@ -209,7 +209,7 @@ class DashboardAPITestCase(TestCase):
         Payment.objects.create(
             request_id=request,
             amount=Decimal("37.50"),
-            payment_status="SUCCESS",
+            payment_status="Success",
             paid_at=paid_at,
         )
         unpaid_request = self.create_request(
@@ -220,7 +220,7 @@ class DashboardAPITestCase(TestCase):
         Payment.objects.create(
             request_id=unpaid_request,
             amount=Decimal("88.00"),
-            payment_status="PENDING",
+            payment_status="Pending",
             paid_at=paid_at,
         )
 
@@ -245,13 +245,13 @@ class DashboardAPITestCase(TestCase):
         Payment.objects.create(
             request_id=own_request,
             amount=Decimal("19.25"),
-            payment_status="SUCCESS",
+            payment_status="Success",
             paid_at=paid_at,
         )
         Payment.objects.create(
             request_id=other_request,
             amount=Decimal("80.00"),
-            payment_status="SUCCESS",
+            payment_status="Success",
             paid_at=paid_at,
         )
 
@@ -282,19 +282,19 @@ class DashboardAPITestCase(TestCase):
         Payment.objects.create(
             request_id=own_request,
             amount=Decimal("19.25"),
-            payment_status="SUCCESS",
+            payment_status="Success",
             paid_at=paid_at,
         )
         Payment.objects.create(
             request_id=other_request,
             amount=Decimal("80.00"),
-            payment_status="SUCCESS",
+            payment_status="Success",
             paid_at=paid_at,
         )
         Payment.objects.create(
             request_id=pending_request,
             amount=Decimal("88.00"),
-            payment_status="PENDING",
+            payment_status="Pending",
             paid_at=paid_at,
         )
 

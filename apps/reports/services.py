@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.audit.models import AuditLog
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentStatuses
 from apps.requests.models import Request
 from apps.services.models import Service
 from apps.workflow.constants import RequestStatuses
@@ -156,14 +156,14 @@ def apply_request_filters(qs, params, user):
 def calculate_revenue_report(user, params):
     """
     Calculates revenue figures filtered by paid_at date range.
-    Only payments with payment_status = 'SUCCESS' are aggregated.
+    Only payments with a successful payment status are aggregated.
     """
     from_date = parse_date_param(params.get('from_date'), 'from_date')
     to_date = parse_date_param(params.get('to_date'), 'to_date')
 
-    # Payments with SUCCESS status linked to non-draft requests
+    # Successful payments linked to non-draft requests
     payments_qs = Payment.objects.filter(
-        payment_status='SUCCESS',
+        payment_status=PaymentStatuses.SUCCESS,
         request_id__current_status__isnull=False,
     ).exclude(
         request_id__current_status=RequestStatuses.DRAFT

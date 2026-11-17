@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.departments.models import AcademicDepartment, ServiceDepartment
-from apps.payments.models import Payment, PaymentVerificationLog
+from apps.payments.models import Payment, PaymentStatuses, PaymentVerificationLog
 from apps.payments.services import (
     PaymentFlowError,
     confirm_payment,
@@ -100,7 +100,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         payment = Payment.objects.create(
             request_id=request,
             amount=service.base_fee,
-            payment_status="PENDING",
+            payment_status=PaymentStatuses.PENDING,
         )
         return request, payment
 
@@ -133,7 +133,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         payment.refresh_from_db()
         self.assertEqual(request.current_status, "PAYMENT_PENDING")
         self.assertEqual(request.current_step_id, self.payment_step)
-        self.assertEqual(payment.payment_status, "PENDING")
+        self.assertEqual(payment.payment_status, PaymentStatuses.PENDING)
 
     def test_submit_api_requires_ack_and_returns_offline_payment_instructions(self):
         request, _ = self.create_draft()
@@ -186,7 +186,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         payment.refresh_from_db()
         self.assertEqual(request.current_status, "SUBMITTED")
         self.assertEqual(request.current_step_id, verification_step)
-        self.assertEqual(payment.payment_status, "SUCCESS")
+        self.assertEqual(payment.payment_status, PaymentStatuses.SUCCESS)
 
     def test_staff_confirmation_advances_request_and_records_history(self):
         request, payment = self.create_draft()
@@ -198,7 +198,7 @@ class OfflinePaymentFlowTestCase(TestCase):
 
         confirmed = confirm_payment(payment, self.staff, self.confirm_data())
         request.refresh_from_db()
-        self.assertEqual(confirmed.payment_status, "SUCCESS")
+        self.assertEqual(confirmed.payment_status, PaymentStatuses.SUCCESS)
         self.assertEqual(request.current_status, "SUBMITTED")
         self.assertEqual(request.current_step_id, self.verification_step)
         self.assertEqual(
@@ -233,6 +233,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["payment_status"], PaymentStatuses.SUCCESS)
         self.assertEqual(response.data["amount_received"], "125.00")
         self.assertEqual(response.data["receipt_number"], "CHALLAN-001")
         self.assertEqual(response.data["service_code"], request.service_id.code)
@@ -243,7 +244,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertNotIn("bank_name", response.data)
         self.assertNotIn("bank_branch", response.data)
         history = response.data["verification_history"][0]
-        self.assertEqual(history["action"], "CONFIRM")
+        self.assertEqual(history["action"], "Confirm")
         self.assertEqual(history["receipt_number"], "CHALLAN-001")
         self.assertNotIn("payment_mode", history)
         self.assertNotIn("bank_name", history)
@@ -266,7 +267,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         self.assertEqual(error.exception.detail["code"], "AMOUNT_MISMATCH")
         payment.refresh_from_db()
         request.refresh_from_db()
-        self.assertEqual(payment.payment_status, "PENDING")
+        self.assertEqual(payment.payment_status, PaymentStatuses.PENDING)
         self.assertEqual(request.current_status, "PAYMENT_PENDING")
 
     def test_rejection_is_append_only_and_a_retry_can_be_confirmed(self):
@@ -280,7 +281,7 @@ class OfflinePaymentFlowTestCase(TestCase):
         request.refresh_from_db()
         payment.refresh_from_db()
         self.assertEqual(request.current_status, "PAYMENT_ISSUE")
-        self.assertEqual(payment.payment_status, "ISSUE")
+        self.assertEqual(payment.payment_status, PaymentStatuses.ISSUE)
 
         confirm_payment(
             payment,
@@ -297,7 +298,7 @@ class OfflinePaymentFlowTestCase(TestCase):
                 .order_by("id")
                 .values_list("action", flat=True)
             ),
-            ["REJECT", "CONFIRM"],
+            ["Reject", "Confirm"],
         )
 
     def test_receipt_number_is_unique_case_insensitively(self):
@@ -371,7 +372,9 @@ class OfflinePaymentFlowTestCase(TestCase):
         )
 
         self.client.force_authenticate(user=self.staff)
-        response = self.client.get("/api/payments/pending/", HTTP_HOST="localhost")
+        response = self.client.get(
+            "/api/payments/pending/?status=PENDING", HTTP_HOST="localhost"
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [item["request_number"] for item in response.data["results"]],

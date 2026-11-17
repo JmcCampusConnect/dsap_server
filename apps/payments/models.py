@@ -4,9 +4,9 @@ from django.db.models.functions import Lower
 
 
 class PaymentStatuses:
-    PENDING = "PENDING"
-    SUCCESS = "SUCCESS"
-    ISSUE = "ISSUE"
+    PENDING = "Pending"
+    SUCCESS = "Success"
+    ISSUE = "Issue"
 
 
 class Payment(models.Model):
@@ -70,8 +70,8 @@ class Payment(models.Model):
 
 
 class PaymentVerificationLog(models.Model):
-    CONFIRM = "CONFIRM"
-    REJECT = "REJECT"
+    CONFIRM = "Confirm"
+    REJECT = "Reject"
 
     ACTION_CHOICES = [
         (CONFIRM, "Confirm"),

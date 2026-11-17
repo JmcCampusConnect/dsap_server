@@ -12,7 +12,7 @@ from apps.accounts.models import User
 from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from apps.departments.models import ServiceDepartment
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentStatuses
 from apps.requests.models import Request
 from apps.services.models import Service
 from apps.workflow.constants import AllowedActions, RequestStatuses
@@ -190,7 +190,7 @@ class DashboardView(APIView):
         actions_today = None
         forwarded_this_week = None
         revenue_scope = Payment.objects.filter(
-                payment_status="SUCCESS",
+                payment_status=PaymentStatuses.SUCCESS,
                 paid_at__gte=revenue_start,
                 paid_at__lt=next_month_start,
             )

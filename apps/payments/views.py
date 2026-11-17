@@ -68,9 +68,13 @@ class PaymentViewSet(GenericViewSet):
         if service_id and service_id.isdigit():
             queryset = queryset.filter(request_id__service_id_id=int(service_id))
 
-        status_filter = request.query_params.get("status", "").upper()
-        if status_filter in {PaymentStatuses.PENDING, PaymentStatuses.ISSUE}:
-            queryset = queryset.filter(payment_status=status_filter)
+        status_filter = request.query_params.get("status", "").strip().casefold()
+        payment_statuses = {
+            PaymentStatuses.PENDING.casefold(): PaymentStatuses.PENDING,
+            PaymentStatuses.ISSUE.casefold(): PaymentStatuses.ISSUE,
+        }
+        if status_filter in payment_statuses:
+            queryset = queryset.filter(payment_status=payment_statuses[status_filter])
 
         submitted_after = request.query_params.get("submitted_after")
         if submitted_after:

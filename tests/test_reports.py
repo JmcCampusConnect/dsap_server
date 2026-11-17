@@ -53,7 +53,7 @@ class ReportsModuleTestCase(TestCase):
                 request_id=req,
                 defaults={
                     'amount': 500.00,
-                    'payment_status': 'SUCCESS',
+                    'payment_status': 'Success',
                     'receipt_number': 'REC_TEST_1001',
                     'paid_at': req.submitted_at,
                 }

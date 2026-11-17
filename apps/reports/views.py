@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.role_constants import Roles
 from apps.departments.models import AcademicDepartment, ServiceDepartment
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentStatuses
 from apps.reports.permissions import CanViewRevenueReport, IsReportViewer
 from apps.reports.serializers import (
     AcademicDepartmentMiniSerializer,
@@ -86,8 +86,8 @@ class ReportSummaryView(APIView):
             revenue_summary = None
         else:
             payments = Payment.objects.filter(request_id__in=filtered_qs)
-            succ_payments = payments.filter(payment_status='SUCCESS')
-            pend_payments = payments.filter(payment_status='PENDING')
+            succ_payments = payments.filter(payment_status=PaymentStatuses.SUCCESS)
+            pend_payments = payments.filter(payment_status=PaymentStatuses.PENDING)
 
             total_collected = succ_payments.aggregate(s=Sum('amount'))['s'] or 0
             successful_transactions = succ_payments.count()
@@ -338,9 +338,9 @@ class ReportOptionsView(APIView):
 
         # 6. Payment Statuses
         payment_statuses = [
-            'PENDING',
-            'SUCCESS',
-            'FAILED',
+            PaymentStatuses.PENDING,
+            PaymentStatuses.SUCCESS,
+            PaymentStatuses.ISSUE,
         ]
 
         return Response({

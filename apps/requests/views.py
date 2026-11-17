@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from common.pagination import StandardPagination
 from apps.documents.models import Document
 from apps.notifications.models import Notification
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentStatuses
 from apps.payments.serializers import PaymentDetailSerializer
 from apps.payments.services import submit_request
 from apps.requests.models import Request, RequestFieldValue
@@ -335,7 +335,7 @@ class StudentRequestViewSet(viewsets.GenericViewSet):
             Payment.objects.create(
                 request_id=request_obj,
                 amount=service.base_fee,
-                payment_status='PENDING',
+                payment_status=PaymentStatuses.PENDING,
             )
 
         return Response(self._serialize_detail(request_obj), status=status.HTTP_201_CREATED)
