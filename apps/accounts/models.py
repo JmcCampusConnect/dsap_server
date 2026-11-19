@@ -89,6 +89,42 @@ class User(models.Model):
 
     def __str__(self):
         return self.username
-    
-    
+
+
+class ImpersonationSession(models.Model):
+    """
+    Tracks active and historical impersonation sessions started by SYSTEM_ADMIN users.
+
+    One row is created when impersonation starts (is_active=True) and closed
+    (is_active=False, ended_at=now) when the admin exits, the token expires, or
+    the session is superseded by a new one.
+    """
+
+    admin_user = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.RESTRICT,
+        related_name='impersonation_sessions_started',
+        db_column='admin_user_id',
+    )
+    target_user = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.RESTRICT,
+        related_name='impersonation_sessions_received',
+        db_column='target_user_id',
+    )
+    reason = models.TextField()
+    started_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'impersonation_session'
+        indexes = [
+            models.Index(fields=['admin_user', 'is_active']),
+            models.Index(fields=['target_user', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"ImpersonationSession(admin={self.admin_user_id}, target={self.target_user_id}, active={self.is_active})"
     

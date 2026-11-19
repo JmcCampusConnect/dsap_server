@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import CanVerifyPayment
+from apps.accounts.permissions import CanVerifyPayment, IsNotImpersonating
 from apps.accounts.role_constants import Roles
 from apps.requests.models import Request
 from apps.workflow.constants import RequestStatuses
@@ -25,6 +25,12 @@ from .services import confirm_payment, reject_payment
 class PaymentViewSet(GenericViewSet):
     permission_classes = [IsAuthenticated, CanVerifyPayment]
     pagination_class = StandardPagination
+
+    def get_permissions(self):
+        perms = [IsAuthenticated(), CanVerifyPayment()]
+        if self.action in ("confirm", "reject"):
+            perms.append(IsNotImpersonating())
+        return perms
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "request_id__request_number",

@@ -1,5 +1,6 @@
 import time
 import re
+from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,17 +8,18 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework.exceptions import AuthenticationFailed, ValidationError
+from rest_framework.exceptions import AuthenticationFailed, ValidationError, PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
-from apps.accounts.tokens import CustomRefreshToken
+from apps.accounts.tokens import CustomRefreshToken, build_impersonation_access_token
 from apps.audit.models import AuditLog
-from ..serializers import CustomTokenObtainPairSerializer, ValidateTokenSerializer
-from ..role_constants import get_accessible_menus, get_capabilities
-from ..models import User
+from ..serializers import CustomTokenObtainPairSerializer, ValidateTokenSerializer, ImpersonateStartSerializer
+from ..role_constants import Roles, get_accessible_menus, get_capabilities
+from ..permissions import IsSystemAdmin, IsNotImpersonating
+from ..models import User, ImpersonationSession
 
 
 if settings.DEBUG:
@@ -146,6 +148,7 @@ class ValidateTokenView(APIView):
         degree = None
         branch = None
         if role_name == "STUDENT":
+            academic_department = None
             if student:
                 academic_department = student.academic_department_id
             if academic_department:
@@ -165,6 +168,18 @@ class ValidateTokenView(APIView):
 
         menus = get_accessible_menus(role_name)
         capabilities = get_capabilities(role_name)
+
+        impersonation_info = None
+        if access_payload.get('is_impersonation'):
+            impersonation_info = {
+                'active': True,
+                'session_id': access_payload.get('impersonation_session_id'),
+                'impersonator': {
+                    'id': access_payload.get('impersonator_id'),
+                    'username': access_payload.get('impersonator_name'),
+                },
+                'expires_at': access_payload.get('exp'),
+            }
 
         data = {
             'username': user.username,
@@ -187,6 +202,7 @@ class ValidateTokenView(APIView):
             'menus': menus,
             'capabilities': capabilities,
             'session_started_at': session_started_at,
+            'impersonation': impersonation_info,
         }
 
         serializer = ValidateTokenSerializer(data=data)
@@ -299,7 +315,7 @@ class LogoutView(APIView):
 
 class LogoutAllView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotImpersonating]
 
     def post(self, request):
         user = request.user
@@ -326,3 +342,146 @@ class LogoutAllView(APIView):
         cookie_name = _get_refresh_cookie_name(request)
         response.delete_cookie(cookie_name, path=_get_refresh_cookie_path(cookie_name))
         return response
+
+
+class ImpersonateView(APIView):
+    """
+    Initiate an impersonation session.
+
+    Only authenticated active SYSTEM_ADMIN users can start an impersonation session.
+    Cannot chain impersonations (IsNotImpersonating).
+    Target user must be active and have a role in Roles.impersonatable().
+    """
+
+    permission_classes = [IsAuthenticated, IsNotImpersonating, IsSystemAdmin]
+
+    def post(self, request):
+        serializer = ImpersonateStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        target_user_id = serializer.validated_data['target_user_id']
+        reason = serializer.validated_data['reason']
+
+        if target_user_id == request.user.id:
+            return Response(
+                {'detail': 'You cannot impersonate yourself.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_user = (
+            User.objects.select_related('role_id', 'service_department_id')
+            .filter(id=target_user_id)
+            .first()
+        )
+        if not target_user:
+            return Response(
+                {'detail': 'Target user not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not target_user.is_active:
+            return Response(
+                {'detail': 'Cannot impersonate an inactive user.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if target_user.role_name not in Roles.impersonatable():
+            return Response(
+                {'detail': f"Cannot impersonate user with role '{target_user.role_name}'."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        now = timezone.now()
+        # Supersede any existing active impersonation session for this admin
+        ImpersonationSession.objects.filter(
+            admin_user=request.user, is_active=True
+        ).update(is_active=False, ended_at=now)
+
+        lifetime_minutes = getattr(settings, 'IMPERSONATION_SESSION_MAX_MINUTES', 30)
+        expires_at = now + timedelta(minutes=lifetime_minutes)
+
+        session = ImpersonationSession.objects.create(
+            admin_user=request.user,
+            target_user=target_user,
+            reason=reason,
+            expires_at=expires_at,
+        )
+
+        token = build_impersonation_access_token(
+            target_user=target_user,
+            admin_user=request.user,
+            session=session,
+            lifetime_minutes=lifetime_minutes,
+        )
+
+        AuditLog.log(
+            request=request,
+            action='IMPERSONATE_START',
+            obj=session,
+            object_repr=f"Impersonation started for {target_user.username}",
+            changes={
+                'target_user_id': target_user.id,
+                'target_username': target_user.username,
+                'reason': reason,
+                'session_id': session.id,
+            },
+        )
+
+        return Response(
+            {
+                'access': str(token),
+                'expires_at': int(token['exp']),
+                'session_id': session.id,
+                'target': {
+                    'id': target_user.id,
+                    'username': target_user.username,
+                    'role_name': target_user.role_name,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ImpersonateExitView(APIView):
+    """
+    End an active impersonation session.
+
+    Can be called by any authenticated user holding an impersonation token.
+    Closes the session in DB and records an IMPERSONATE_END audit log.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = getattr(request, 'auth', None)
+        payload = getattr(token, 'payload', {})
+        if not payload.get('is_impersonation'):
+            return Response(
+                {'detail': 'Not currently impersonating.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session_id = payload.get('impersonation_session_id')
+        session = (
+            ImpersonationSession.objects.select_related('target_user', 'admin_user')
+            .filter(id=session_id, is_active=True)
+            .first()
+        )
+        if session:
+            session.is_active = False
+            session.ended_at = timezone.now()
+            session.save(update_fields=['is_active', 'ended_at'])
+
+            AuditLog.log(
+                request=request,
+                action='IMPERSONATE_END',
+                obj=session,
+                object_repr=f"Impersonation ended for {session.target_user.username}",
+                changes={
+                    'session_id': session.id,
+                    'target_user_id': session.target_user_id,
+                    'admin_user_id': session.admin_user_id,
+                },
+            )
+
+        return Response({'detail': 'Impersonation ended.'}, status=status.HTTP_200_OK)

@@ -59,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apps.accounts.middleware.ImpersonationAuditMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -130,13 +131,14 @@ AUTHENTICATION_BACKENDS = [
 JWT_ACCESS_TOKEN_LIFETIME_MIN = int(os.environ.get('JWT_ACCESS_TOKEN_LIFETIME_MIN', '15'))   # 15 min
 JWT_REFRESH_TOKEN_LIFETIME_DAYS = int(os.environ.get('JWT_REFRESH_TOKEN_LIFETIME_DAYS', '7'))  # 7 days
 REFRESH_COOKIE_PERSISTENT_AGE = 60 * 60 * 24 * JWT_REFRESH_TOKEN_LIFETIME_DAYS
+IMPERSONATION_SESSION_MAX_MINUTES = int(os.environ.get('IMPERSONATION_SESSION_MAX_MINUTES', '30'))  # 30 min max
 
 # ----------------------------------------------------------------------
 # Django REST Framework
 # ----------------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.accounts.authentication.ImpersonationAwareJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.AllowAny',

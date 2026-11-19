@@ -20,6 +20,11 @@ class Roles:
     def department_scoped(cls) -> List[str]:
         return [cls.SERVICE_DEPT_ADMIN, cls.SERVICE_DEPT_STAFF]
 
+    @classmethod
+    def impersonatable(cls) -> List[str]:
+        """Roles that a SYSTEM_ADMIN may impersonate."""
+        return [cls.STUDENT, cls.SERVICE_DEPT_ADMIN, cls.SERVICE_DEPT_STAFF]
+
 ROLE_CHOICES = [(r, r) for r in Roles.all()]
 
 # Menu Key -> Allowed Roles (Backend + Frontend SSOT)
@@ -88,6 +93,7 @@ CAPABILITY_MAP = {
     "user.view": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN, Roles.SERVICE_DEPT_STAFF],
     "user.manage": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
     "user.import": [Roles.SYSTEM_ADMIN, Roles.SERVICE_DEPT_ADMIN],
+    "user.impersonate": [Roles.SYSTEM_ADMIN],
     "student.manage": [Roles.SYSTEM_ADMIN],
     "notification_template.manage": [Roles.SYSTEM_ADMIN],
     "audit_log.view": [Roles.SYSTEM_ADMIN],

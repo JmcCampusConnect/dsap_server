@@ -15,6 +15,9 @@ class AuditLog(models.Model):
         ('UPLOAD', 'Upload'),
         ('EXPORT', 'Export'),
         ('IMPORT', 'Import'),
+        ('IMPERSONATE_START', 'Impersonate Start'),
+        ('IMPERSONATE_END', 'Impersonate End'),
+        ('IMPERSONATED_REQUEST', 'Impersonated Request'),
     ]
 
     app_label = models.CharField(max_length=100, blank=True, null=True)
@@ -25,6 +28,8 @@ class AuditLog(models.Model):
     changes = models.JSONField(default=dict, blank=True)
     user_id = models.CharField(max_length=100, blank=True, null=True)
     user_name = models.CharField(max_length=200, blank=True, null=True)
+    impersonator_id = models.CharField(max_length=100, blank=True, null=True)
+    impersonator_name = models.CharField(max_length=200, blank=True, null=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     request_path = models.CharField(max_length=500, blank=True)
@@ -84,7 +89,14 @@ class AuditLog(models.Model):
         elif request and hasattr(request, 'user') and request.user.is_authenticated:
             audit_data['user_id'] = str(request.user.id)
             audit_data['user_name'] = request.user.username
-            
+
+        # Capture impersonation context from token claims if present
+        token = getattr(request, 'auth', None) if request else None
+        payload = getattr(token, 'payload', {}) if token else {}
+        if payload.get('is_impersonation'):
+            audit_data['impersonator_id'] = str(payload.get('impersonator_id', ''))
+            audit_data['impersonator_name'] = str(payload.get('impersonator_name', ''))
+
         return cls.objects.create(**audit_data)
 
     @staticmethod

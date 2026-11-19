@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
+from apps.accounts.permissions import IsNotImpersonating
 from apps.audit.models import AuditLog
 from apps.students.models import Student
 from common.exceptions import (
@@ -80,6 +81,7 @@ class ProfileView(APIView):
 
     # -- WRITE --------------------------------------------------------
     def patch(self, request):
+        IsNotImpersonating().has_permission(request, self)
         user = request.user
         payload = request.data
 

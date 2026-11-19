@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from common.exceptions import BlockedDuringImpersonationError
 from .role_constants import Roles
 
 def _get_dept_id(obj, field_name: str):
@@ -166,3 +167,18 @@ class CanManageServiceDepartment(permissions.BasePermission):
             user.service_department_id_id is not None
             and user.service_department_id_id == department.id
         )
+
+
+class IsNotImpersonating(permissions.BasePermission):
+    """
+    Blocks requests that are made via an impersonation access token.
+
+    Returns HTTP 403 with code='blocked_during_impersonation' so the frontend
+    can display a meaningful message rather than a generic permission error.
+    """
+
+    def has_permission(self, request, view):
+        token = getattr(request, 'auth', None)
+        if token is not None and getattr(token, 'payload', {}).get('is_impersonation'):
+            raise BlockedDuringImpersonationError()
+        return True

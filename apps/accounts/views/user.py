@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from apps.audit.models import AuditLog
 from ..models import User
-from ..permissions import IsOwnServiceDepartment, IsUserManager
+from ..permissions import IsOwnServiceDepartment, IsUserManager, IsNotImpersonating
 from ..role_constants import Roles
 from ..serializers import UserSerializer, ResetPasswordSerializer
 
@@ -31,7 +31,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve", "export_excel", "download_template"):
             return [IsAuthenticated(), IsOwnServiceDepartment()]
 
-        return [IsAuthenticated(), IsUserManager(), IsOwnServiceDepartment()]
+        return [IsAuthenticated(), IsNotImpersonating(), IsUserManager(), IsOwnServiceDepartment()]
 
     # ------------------------------------------------------------------
     # Queryset

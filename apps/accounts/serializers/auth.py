@@ -62,6 +62,17 @@ class ValidateTokenSerializer(serializers.Serializer):
     department_name = serializers.CharField(allow_null=True, allow_blank=True)
     degree = serializers.CharField(allow_null=True, allow_blank=True)
     branch = serializers.CharField(allow_null=True, allow_blank=True)
+    impersonation = serializers.DictField(allow_null=True, required=False, default=None)
+
+
+class ImpersonateStartSerializer(serializers.Serializer):
+    target_user_id = serializers.IntegerField(required=True)
+    reason = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+
+    def validate_reason(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Reason is required.")
+        return value.strip()
 
 
 class ResetPasswordSerializer(serializers.Serializer):

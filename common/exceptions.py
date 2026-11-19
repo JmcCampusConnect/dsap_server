@@ -69,3 +69,18 @@ class ProfileNotFoundError(APIException):
                 "message": "Student record is missing for this user.",
             }
         )
+
+
+class BlockedDuringImpersonationError(APIException):
+    """403 — action is blocked during an active impersonation session."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    default_code = "blocked_during_impersonation"
+
+    def __init__(self, message="This action is not allowed during impersonation."):
+        super().__init__(
+            detail={
+                "detail": message,
+                "code": "blocked_during_impersonation",
+            }
+        )
