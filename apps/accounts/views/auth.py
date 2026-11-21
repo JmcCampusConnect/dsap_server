@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.exceptions import AuthenticationFailed, ValidationError, PermissionDenied
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -284,6 +285,24 @@ class LogoutView(APIView):
     permission_classes = []
 
     def post(self, request):
+        # Detect an impersonation access token without requiring authentication,
+        # so normal cookie-based logout (even with an expired access token) is unchanged.
+        # An impersonation token must never blacklist the admin's refresh cookie.
+        try:
+            _auth_result = JWTAuthentication().authenticate(request)
+        except AuthenticationFailed:
+            _auth_result = None
+        if _auth_result is not None:
+            _auth_user, auth_token = _auth_result
+            if getattr(auth_token, 'payload', {}).get('is_impersonation'):
+                return Response(
+                    {
+                        'detail': 'This action is not allowed during impersonation.',
+                        'code': 'blocked_during_impersonation',
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         cookie_name = _get_refresh_cookie_name(request)
         refresh_token = request.COOKIES.get(cookie_name)
         user = None
@@ -344,6 +363,40 @@ class LogoutAllView(APIView):
         return response
 
 
+def end_impersonation_session(session, reason, request=None):
+    """Close an impersonation session exactly once and audit the end. Idempotent.
+
+    ``reason`` is one of ``exit``, ``superseded`` or ``expired``. The end reason
+    and duration are stored in the existing AuditLog ``changes`` dict so no new
+    model fields are required.
+    """
+    if not session.is_active:
+        return session
+    now = timezone.now()
+    session.is_active = False
+    session.ended_at = now
+    session.save(update_fields=['is_active', 'ended_at'])
+    duration_seconds = int((now - session.started_at).total_seconds())
+    admin_user = getattr(session, 'admin_user', None)
+    AuditLog.log(
+        request=None,
+        user=admin_user,
+        action='IMPERSONATE_END',
+        obj=session,
+        object_repr=f"Impersonation ended for {session.target_user.username}",
+        changes={
+            'session_id': session.id,
+            'target_user_id': session.target_user_id,
+            'admin_user_id': session.admin_user_id,
+            'ended_reason': reason,
+            'duration_seconds': duration_seconds,
+        },
+        impersonator_id=str(admin_user.id),
+        impersonator_name=admin_user.username,
+    )
+    return session
+
+
 class ImpersonateView(APIView):
     """
     Initiate an impersonation session.
@@ -392,10 +445,14 @@ class ImpersonateView(APIView):
             )
 
         now = timezone.now()
-        # Supersede any existing active impersonation session for this admin
-        ImpersonationSession.objects.filter(
+        # Close any existing active impersonation session for this admin (D4).
+        # A still-valid session is superseded; an already-expired one is recorded
+        # as expired so every session end is audited exactly once.
+        for old in ImpersonationSession.objects.filter(
             admin_user=request.user, is_active=True
-        ).update(is_active=False, ended_at=now)
+        ):
+            end_reason = 'expired' if old.expires_at <= now else 'superseded'
+            end_impersonation_session(old, end_reason, request=request)
 
         lifetime_minutes = getattr(settings, 'IMPERSONATION_SESSION_MAX_MINUTES', 30)
         expires_at = now + timedelta(minutes=lifetime_minutes)
@@ -425,6 +482,8 @@ class ImpersonateView(APIView):
                 'reason': reason,
                 'session_id': session.id,
             },
+            impersonator_id=str(request.user.id),
+            impersonator_name=request.user.username,
         )
 
         return Response(
@@ -462,26 +521,23 @@ class ImpersonateExitView(APIView):
             )
 
         session_id = payload.get('impersonation_session_id')
+        admin_id = payload.get('impersonator_id')
         session = (
             ImpersonationSession.objects.select_related('target_user', 'admin_user')
-            .filter(id=session_id, is_active=True)
+            .filter(
+                id=session_id,
+                is_active=True,
+                admin_user_id=admin_id,
+                target_user_id=request.user.id,
+            )
             .first()
         )
-        if session:
-            session.is_active = False
-            session.ended_at = timezone.now()
-            session.save(update_fields=['is_active', 'ended_at'])
-
-            AuditLog.log(
-                request=request,
-                action='IMPERSONATE_END',
-                obj=session,
-                object_repr=f"Impersonation ended for {session.target_user.username}",
-                changes={
-                    'session_id': session.id,
-                    'target_user_id': session.target_user_id,
-                    'admin_user_id': session.admin_user_id,
-                },
+        if session is None:
+            return Response(
+                {'detail': 'No active impersonation session for this token.'},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        end_impersonation_session(session, 'exit', request=request)
 
         return Response({'detail': 'Impersonation ended.'}, status=status.HTTP_200_OK)

@@ -50,7 +50,7 @@ class AuditLog(models.Model):
         return f"{self.action} - {self.object_repr} - {self.created_at}"
 
     @classmethod
-    def log(cls, request, action, obj=None, object_repr='', changes=None, object_id=None, app_label='', model_name='', user=None):
+    def log(cls, request, action, obj=None, object_repr='', changes=None, object_id=None, app_label='', model_name='', user=None, impersonator_id=None, impersonator_name=None):
         resolved_app_label = app_label or ''
         resolved_model_name = model_name or ''
         resolved_object_id = str(object_id) if object_id is not None else ''
@@ -90,10 +90,14 @@ class AuditLog(models.Model):
             audit_data['user_id'] = str(request.user.id)
             audit_data['user_name'] = request.user.username
 
-        # Capture impersonation context from token claims if present
+        # Capture impersonation context from explicit args first, then from
+        # token claims if present (actions performed during an impersonation).
         token = getattr(request, 'auth', None) if request else None
         payload = getattr(token, 'payload', {}) if token else {}
-        if payload.get('is_impersonation'):
+        if impersonator_id is not None or impersonator_name is not None:
+            audit_data['impersonator_id'] = str(impersonator_id) if impersonator_id is not None else ''
+            audit_data['impersonator_name'] = str(impersonator_name) if impersonator_name is not None else ''
+        elif payload.get('is_impersonation'):
             audit_data['impersonator_id'] = str(payload.get('impersonator_id', ''))
             audit_data['impersonator_name'] = str(payload.get('impersonator_name', ''))
 

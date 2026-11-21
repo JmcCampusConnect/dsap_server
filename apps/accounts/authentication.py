@@ -43,21 +43,35 @@ class ImpersonationAwareJWTAuthentication(JWTAuthentication):
         # Lazy import to avoid circular dependency
         from apps.accounts.models import ImpersonationSession
 
+        now = timezone.now()
         session = (
             ImpersonationSession.objects
             .select_related('admin_user', 'target_user')
             .filter(
                 id=session_id,
-                is_active=True,
-                expires_at__gt=timezone.now(),
-                target_user_id=user.id,
                 admin_user_id=admin_id,
+                target_user_id=user.id,
             )
             .first()
         )
 
+        if session is None:
+            raise AuthenticationFailed({
+                'detail': 'Impersonation session is no longer valid.',
+                'code': 'impersonation_ended',
+            })
+
+        # Close and audit an expired session lazily and idempotently (D3/D11).
+        if session.expires_at <= now:
+            from apps.accounts.views.auth import end_impersonation_session
+            end_impersonation_session(session, 'expired', request=request)
+            raise AuthenticationFailed({
+                'detail': 'Impersonation session is no longer valid.',
+                'code': 'impersonation_ended',
+            })
+
         if (
-            session is None
+            not session.is_active
             or not session.admin_user.is_active
             or not session.admin_user.is_system_admin()
             or user.is_system_admin()

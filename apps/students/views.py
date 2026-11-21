@@ -17,6 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.models import Role, User
+from apps.accounts.permissions import IsNotImpersonating
 from apps.accounts.serializers import ResetPasswordSerializer
 from apps.audit.models import AuditLog
 from apps.departments.models import AcademicDepartment
@@ -35,6 +36,17 @@ class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
     pagination_class = StandardPagination
     permission_classes = [IsStudentManagementAdmin]
+
+    # Mutating actions are blocked during impersonation; read-only stays allowed.
+    MUTATING_ACTIONS = {
+        'create', 'update', 'partial_update', 'destroy',
+        'activate', 'reset_password', 'import_excel', 'bulk_import_excel',
+    }
+
+    def get_permissions(self):
+        if self.action in self.MUTATING_ACTIONS:
+            return [IsAuthenticated(), IsNotImpersonating(), IsStudentManagementAdmin()]
+        return [IsAuthenticated(), IsStudentManagementAdmin()]
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
