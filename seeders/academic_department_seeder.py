@@ -530,7 +530,7 @@ def run() -> dict[str, Any]:
                 "branch": department_data["branch"],
                 "type": department_data["type"],
                 "category": department_data["category"],
-                "status": department_data["status"],
+                "status": "active" if str(department_data.get("status", "")).strip().lower() in ("active", "true", "1") else "inactive",
             },
         )
 

@@ -8,9 +8,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.models import User
 from apps.accounts.permissions import IsSystemAdmin
-from apps.accounts.role_constants import Roles
 from apps.audit.models import AuditLog
 from apps.departments.models import AcademicDepartment
 from apps.departments.serializers import AcademicDepartmentSerializer
@@ -28,27 +26,30 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
         status_filter = self.request.query_params.get("status", "").strip().lower()
 
-        if status_filter in ("active", "inactive"):
-            qs = AcademicDepartment.objects.filter(status=status_filter)
+        if status_filter == "active":
+            qs = AcademicDepartment.objects.filter(status__iexact="active")
+        elif status_filter == "inactive":
+            qs = AcademicDepartment.objects.exclude(status__iexact="active")
         else:
             qs = AcademicDepartment.objects.all()
 
         qs = qs.order_by("code", "id")
         search = self.request.query_params.get("search", "").strip()
         if search:
-            qs = qs.filter(
-                Q(code__icontains=search)
-                | Q(stream__icontains=search)
-                | Q(degree__icontains=search)
-                | Q(branch__icontains=search)
-                | Q(type__icontains=search)
-                | Q(category__icontains=search)
-            )
+            for term in search.split():
+                qs = qs.filter(
+                    Q(code__icontains=term)
+                    | Q(stream__icontains=term)
+                    | Q(degree__icontains=term)
+                    | Q(branch__icontains=term)
+                    | Q(type__icontains=term)
+                    | Q(category__icontains=term)
+                )
 
         for field in ("code", "stream", "degree", "branch", "type", "category"):
             val = self.request.query_params.get(field, "").strip()
-            if val:
-                qs = qs.filter(**{field: val})
+            if val and val.upper() != "ALL":
+                qs = qs.filter(**{f"{field}__iexact": val})
 
         return qs
 
@@ -116,17 +117,6 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         """Soft delete (Deactivate) Academic Department."""
         instance = self.get_object()
 
-        if User.objects.filter(academic_department_id=instance).exists():
-            return Response(
-                {
-                    "detail": (
-                        "Academic Department cannot be deactivated because "
-                        "it is assigned to one or more users."
-                    )
-                },
-                status=status.HTTP_409_CONFLICT
-            )
-
         snapshot = self.get_serializer(instance).data
         object_id = instance.pk
 
@@ -148,25 +138,54 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="activate")
     def activate(self, request, pk=None):
-        instance = AcademicDepartment.objects.filter(
-            pk=pk,
-            status='inactive'
-        ).first()
+        instance = self.get_object()
 
-        if not instance:
+        current_status = str(instance.status or '').strip().lower()
+        if current_status == 'active':
             return Response(
-                {"detail": "Academic Department is not inactive or does not exist."},
+                {"detail": "Academic Department is already active."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Pre-check if another active department with the same (code, stream) exists
+        conflict = AcademicDepartment.objects.filter(
+            code__iexact=instance.code,
+            stream__iexact=instance.stream,
+            status__iexact='active'
+        ).exclude(pk=instance.pk).first()
+
+        if conflict:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot activate department '{instance.code}' ({instance.stream}) "
+                        f"because an active department with this code and stream already exists."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
             )
 
         old_status = instance.status
         instance.status = 'active'
-        instance.save(update_fields=['status', 'updated_at'])
+
+        try:
+            instance.save(update_fields=['status', 'updated_at'])
+        except IntegrityError:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot activate department '{instance.code}' ({instance.stream}) "
+                        f"due to a conflict with an existing record."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
 
         AuditLog.log(
             request=request,
             action='ACTIVATE',
             obj=instance,
+            object_id=instance.pk,
             changes={
                 'status': {
                     'old': old_status,
@@ -183,72 +202,94 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="options")
     def get_options(self, request):
-        base_qs = AcademicDepartment.objects.filter(status='active')
+        status_param = request.query_params.get("status", "").strip().lower()
+        if status_param == "active":
+            base_qs = AcademicDepartment.objects.filter(status__iexact="active")
+        elif status_param == "inactive":
+            base_qs = AcademicDepartment.objects.exclude(status__iexact="active")
+        else:
+            base_qs = AcademicDepartment.objects.all()
+
         stream_filter = request.query_params.get("stream", "").strip()
         type_filter = request.query_params.get("type", "").strip()
         category_filter = request.query_params.get("category", "").strip()
         degree_filter = request.query_params.get("degree", "").strip()
         branch_filter = request.query_params.get("branch", "").strip()
 
-        # All active records for frontend client-side dynamic filtering
-        records = list(
-            base_qs.values("stream", "type", "category", "degree", "branch", "code").distinct()
-        )
+        # All records for frontend client-side dynamic filtering
+        records = [
+            {
+                "stream": (r.get("stream") or "").strip(),
+                "type": (r.get("type") or "").strip(),
+                "category": (r.get("category") or "").strip(),
+                "degree": (r.get("degree") or "").strip(),
+                "branch": (r.get("branch") or "").strip(),
+                "code": (r.get("code") or "").strip(),
+                "status": (r.get("status") or "").strip().lower(),
+            }
+            for r in base_qs.values("stream", "type", "category", "degree", "branch", "code", "status").distinct()
+        ]
 
-        streams = list(base_qs.exclude(stream="").values_list("stream", flat=True).distinct())
+        model_streams = [choice[0] for choice in AcademicDepartment.STREAM_CHOICES]
+        db_streams = [x.strip() for x in base_qs.exclude(stream="").values_list("stream", flat=True).distinct() if x.strip()]
+        streams = sorted(list(set(model_streams) | set(db_streams)))
 
+        model_types = [choice[0] for choice in AcademicDepartment.TYPE_CHOICES]
         type_qs = base_qs.exclude(type="")
-        if stream_filter:
-            type_qs = type_qs.filter(stream=stream_filter)
-        types = list(type_qs.values_list("type", flat=True).distinct())
+        if stream_filter and stream_filter.upper() != "ALL":
+            type_qs = type_qs.filter(stream__iexact=stream_filter)
+        db_types = [x.strip() for x in type_qs.values_list("type", flat=True).distinct() if x.strip()]
+        types = sorted(list(set(model_types) | set(db_types))) if not stream_filter else (db_types or model_types)
 
+        model_categories = [choice[0] for choice in AcademicDepartment.CATEGORY_CHOICES]
         cat_qs = base_qs.exclude(category="")
-        if stream_filter:
-            cat_qs = cat_qs.filter(stream=stream_filter)
-        if type_filter:
-            cat_qs = cat_qs.filter(type=type_filter)
-        categories = list(cat_qs.values_list("category", flat=True).distinct())
+        if stream_filter and stream_filter.upper() != "ALL":
+            cat_qs = cat_qs.filter(stream__iexact=stream_filter)
+        if type_filter and type_filter.upper() != "ALL":
+            cat_qs = cat_qs.filter(type__iexact=type_filter)
+        db_categories = [x.strip() for x in cat_qs.values_list("category", flat=True).distinct() if x.strip()]
+        categories = sorted(list(set(model_categories) | set(db_categories))) if not (stream_filter or type_filter) else (db_categories or model_categories)
 
         deg_qs = base_qs.exclude(degree="")
-        if stream_filter:
-            deg_qs = deg_qs.filter(stream=stream_filter)
-        if type_filter:
-            deg_qs = deg_qs.filter(type=type_filter)
-        if category_filter:
-            deg_qs = deg_qs.filter(category=category_filter)
-        degrees = list(deg_qs.values_list("degree", flat=True).distinct())
+        if stream_filter and stream_filter.upper() != "ALL":
+            deg_qs = deg_qs.filter(stream__iexact=stream_filter)
+        if type_filter and type_filter.upper() != "ALL":
+            deg_qs = deg_qs.filter(type__iexact=type_filter)
+        if category_filter and category_filter.upper() != "ALL":
+            deg_qs = deg_qs.filter(category__iexact=category_filter)
+        degrees = sorted(list(set([x.strip() for x in deg_qs.values_list("degree", flat=True).distinct() if x.strip()])))
 
         branch_qs = base_qs.exclude(branch="")
-        if stream_filter:
-            branch_qs = branch_qs.filter(stream=stream_filter)
-        if type_filter:
-            branch_qs = branch_qs.filter(type=type_filter)
-        if category_filter:
-            branch_qs = branch_qs.filter(category=category_filter)
-        if degree_filter:
-            branch_qs = branch_qs.filter(degree=degree_filter)
-        branches = list(branch_qs.values_list("branch", flat=True).distinct())
+        if stream_filter and stream_filter.upper() != "ALL":
+            branch_qs = branch_qs.filter(stream__iexact=stream_filter)
+        if type_filter and type_filter.upper() != "ALL":
+            branch_qs = branch_qs.filter(type__iexact=type_filter)
+        if category_filter and category_filter.upper() != "ALL":
+            branch_qs = branch_qs.filter(category__iexact=category_filter)
+        if degree_filter and degree_filter.upper() != "ALL":
+            branch_qs = branch_qs.filter(degree__iexact=degree_filter)
+        branches = sorted(list(set([x.strip() for x in branch_qs.values_list("branch", flat=True).distinct() if x.strip()])))
 
         code_qs = base_qs.exclude(code="")
-        if stream_filter:
-            code_qs = code_qs.filter(stream=stream_filter)
-        if type_filter:
-            code_qs = code_qs.filter(type=type_filter)
-        if category_filter:
-            code_qs = code_qs.filter(category=category_filter)
-        if degree_filter:
-            code_qs = code_qs.filter(degree=degree_filter)
-        if branch_filter:
-            code_qs = code_qs.filter(branch=branch_filter)
-        codes = list(code_qs.values_list("code", flat=True).distinct())
+        if stream_filter and stream_filter.upper() != "ALL":
+            code_qs = code_qs.filter(stream__iexact=stream_filter)
+        if type_filter and type_filter.upper() != "ALL":
+            code_qs = code_qs.filter(type__iexact=type_filter)
+        if category_filter and category_filter.upper() != "ALL":
+            code_qs = code_qs.filter(category__iexact=category_filter)
+        if degree_filter and degree_filter.upper() != "ALL":
+            code_qs = code_qs.filter(degree__iexact=degree_filter)
+        if branch_filter and branch_filter.upper() != "ALL":
+            code_qs = code_qs.filter(branch__iexact=branch_filter)
+        codes = sorted(list(set([x.strip() for x in code_qs.values_list("code", flat=True).distinct() if x.strip()])))
 
         return Response({
-            "streams": [{"value": x, "label": x} for x in sorted(streams)],
-            "types": [{"value": x, "label": x} for x in sorted(types)],
-            "categories": [{"value": x, "label": x} for x in sorted(categories)],
-            "degrees": [{"value": x, "label": x} for x in sorted(degrees)],
-            "branches": [{"value": x, "label": x} for x in sorted(branches)],
-            "codes": [{"value": x, "label": x} for x in sorted(codes)],
+            "streams": [{"value": x, "label": x} for x in streams if x],
+            "types": [{"value": x, "label": x} for x in types if x],
+            "categories": [{"value": x, "label": x} for x in categories if x],
+            "degrees": [{"value": x, "label": x} for x in degrees if x],
+            "branches": [{"value": x, "label": x} for x in branches if x],
+            "codes": [{"value": x, "label": x} for x in codes if x],
             "records": records,
         })
 
@@ -263,6 +304,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         headers = ["Code", "Stream", "Degree", "Branch", "Type", "Category", "Status"]   
         ws.append(headers)
         for dept in qs:
+            is_dept_active = str(dept.status or '').strip().lower() == 'active'
             ws.append([
                 dept.code,
                 dept.stream,
@@ -270,12 +312,21 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 dept.branch,
                 dept.type,
                 dept.category,
-                dept.status,
+                "Active" if is_dept_active else "Inactive",
             ])
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=academic_departments.xlsx'
         wb.save(response)
+
+        AuditLog.log(
+            request=request,
+            action="EXPORT",
+            obj=AcademicDepartment,
+            object_id="EXPORT_ACADEMIC_DEPARTMENTS",
+            object_repr="Exported Academic Departments",
+            changes={"exported_count": qs.count()},
+        )
 
         return response
 
@@ -432,6 +483,9 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
                 row_errors.append(
                     f"Invalid Stream '{stream}'. Allowed values: {allowed_values}."
                 )
+            else:
+                stream = next(s for s in allowed_streams if s.lower() == stream.lower())
+                row_data["stream"] = stream
             if not degree:
                 row_errors.append("Degree is required.")
             elif len(degree) > 50:
@@ -510,6 +564,93 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
             "summary": summary,
             "rows": parsed_rows
         })
+
+    @action(detail=False, methods=['post'], url_path='import', parser_classes=[MultiPartParser, FormParser])
+    def import_excel(self, request):
+        parse_response = self.parse_excel(request)
+        if parse_response.status_code != status.HTTP_200_OK:
+            return parse_response
+
+        parsed_data = parse_response.data
+        summary = parsed_data.get('summary', {})
+        rows = parsed_data.get('rows', [])
+
+        invalid_rows = [r for r in rows if r.get('status') == 'INVALID']
+        if invalid_rows:
+            details = [
+                {
+                    "row": r.get('row_number'),
+                    "errors": r.get('errors', [])
+                }
+                for r in invalid_rows
+            ]
+            return Response(
+                {"error": f"Import failed with {len(invalid_rows)} validation error(s)", "details": details},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        valid_rows = [r for r in rows if r.get('status') == 'NEW']
+        if not valid_rows:
+            if summary.get('already_exists', 0) > 0 or summary.get('duplicate', 0) > 0:
+                return Response(
+                    {"message": "Already existing data", "imported_count": 0},
+                    status=status.HTTP_200_OK
+                )
+            return Response(
+                {"error": "No valid department records found in file"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        items = [
+            {
+                "code": r["code"],
+                "stream": r["stream"],
+                "degree": r["degree"],
+                "branch": r["branch"],
+                "type": r["type"],
+                "category": r["category"],
+                "department_status": r.get("department_status", "active"),
+            }
+            for r in valid_rows
+        ]
+
+        db_existing = set(
+            (c.strip().upper(), s.strip().lower())
+            for c, s in AcademicDepartment.objects.values_list('code', 'stream')
+        )
+        valid_departments = []
+        for item in items:
+            code = item['code']
+            stream = item['stream']
+            pair = (code.upper(), stream.lower())
+            if pair in db_existing:
+                continue
+            db_existing.add(pair)
+            valid_departments.append(AcademicDepartment(
+                code=code,
+                stream=stream,
+                degree=item['degree'],
+                branch=item['branch'],
+                type=item['type'],
+                category=item['category'],
+                status=item['department_status'],
+            ))
+
+        with transaction.atomic():
+            created_objs = AcademicDepartment.objects.bulk_create(valid_departments)
+            AuditLog.log(
+                request=request,
+                action='IMPORT',
+                obj=AcademicDepartment,
+                object_id='BULK_IMPORT',
+                object_repr='Imported Academic Departments',
+                changes={"imported_count": len(created_objs)}
+            )
+
+        return Response({
+            "message": f"Successfully imported {len(created_objs)} departments",
+            "imported_count": len(created_objs)
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='confirm_import')
     def confirm_import(self, request):
