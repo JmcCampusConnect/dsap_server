@@ -54,7 +54,7 @@ class MyRequestViewSet(viewsets.ReadOnlyModelViewSet):
         'service_id__service_department_id__name',
     ]
     ordering_fields = ['created_at', 'submitted_at', 'request_number', 'current_status']
-    ordering = ['-created_at']
+    ordering = ['-created_at', '-id']
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

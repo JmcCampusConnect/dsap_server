@@ -145,7 +145,7 @@ class DeptQueueViewSet(GenericViewSet):
         'student_id__register_number',
     ]
     ordering_fields = ['submitted_at', 'updated_at', 'request_number', 'current_status']
-    ordering = ['-updated_at']
+    ordering = ['-updated_at', '-id']
 
     # ------------------------------------------------------------------
     # Internal helpers

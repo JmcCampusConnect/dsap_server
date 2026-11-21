@@ -3,10 +3,9 @@ from rest_framework.response import Response
 
 
 class StandardPagination(PageNumberPagination):
-    
     page_size = 100
     page_size_query_param = "page_size"
-    max_page_size = 100
+    max_page_size = 1000
     page_query_param = "page"
 
     def get_paginated_response(self, data):
@@ -15,6 +14,9 @@ class StandardPagination(PageNumberPagination):
                 "count": self.page.paginator.count,
                 "next": self.get_next_link(),
                 "previous": self.get_previous_link(),
+                "page": self.page.number,
+                "page_size": self.get_page_size(self.request),
+                "total_pages": self.page.paginator.num_pages,
                 "results": data,
             }
         )
@@ -22,7 +24,7 @@ class StandardPagination(PageNumberPagination):
     def get_paginated_response_schema(self, schema):
         return {
             "type": "object",
-            "required": ["count", "results"],
+            "required": ["count", "page", "page_size", "total_pages", "results"],
             "properties": {
                 "count": {
                     "type": "integer",
@@ -37,6 +39,18 @@ class StandardPagination(PageNumberPagination):
                     "type": "string",
                     "nullable": True,
                     "description": "URL of the previous page, or null if on the first page.",
+                },
+                "page": {
+                    "type": "integer",
+                    "description": "The current page number.",
+                },
+                "page_size": {
+                    "type": "integer",
+                    "description": "The number of records returned per page.",
+                },
+                "total_pages": {
+                    "type": "integer",
+                    "description": "The total number of pages in the filtered result.",
                 },
                 "results": schema,
             },

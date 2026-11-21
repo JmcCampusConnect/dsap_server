@@ -40,34 +40,50 @@ class NotificationTemplateViewSet(viewsets.ModelViewSet):
     Strictly protected for SYSTEM_ADMIN role.
     """
 
-    queryset = NotificationTemplate.objects.all().order_by("event_code", "channel")
+    queryset = NotificationTemplate.objects.all().order_by("event_code", "channel", "id")
     serializer_class = NotificationTemplateSerializer
     permission_classes = [IsAuthenticated, IsSystemAdmin]
-    pagination_class = None  # Templates are a small fixed set; return complete list
+    pagination_class = StandardPagination
+    search_fields = ["name", "subject", "event_code"]
+    ordering_fields = ["name", "event_code", "channel", "is_active", "updated_at"]
+    ordering = ["event_code", "channel", "id"]
 
     def get_queryset(self):
         qs = super().get_queryset()
         channel = self.request.query_params.get("channel")
         event_code = self.request.query_params.get("event_code")
         is_active = self.request.query_params.get("is_active")
-        search = self.request.query_params.get("search")
 
-        if channel:
+        if channel and channel.upper() != "ALL":
             qs = qs.filter(channel__iexact=channel.strip())
-        if event_code:
+        if event_code and event_code.upper() != "ALL":
             qs = qs.filter(event_code__iexact=event_code.strip())
         if is_active is not None and is_active != "":
             active_bool = is_active.lower() in ("true", "1", "t")
             qs = qs.filter(is_active=active_bool)
-        if search:
-            search = search.strip()
-            qs = qs.filter(
-                Q(name__icontains=search)
-                | Q(subject__icontains=search)
-                | Q(event_code__icontains=search)
-            )
-
         return qs
+
+    @action(detail=False, methods=["get"], url_path="options")
+    def options(self, request):
+        templates = NotificationTemplate.objects.all()
+        return Response(
+            {
+                "total_count": templates.count(),
+                "channels": list(
+                    templates.order_by()
+                    .values_list("channel", flat=True)
+                    .distinct()
+                    .order_by("channel")
+                ),
+                "email_event_codes": list(
+                    templates.filter(channel="EMAIL")
+                    .order_by()
+                    .values_list("event_code", flat=True)
+                    .distinct()
+                    .order_by("event_code")
+                ),
+            }
+        )
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -254,10 +270,12 @@ class NotificationHistoryViewSet(
     queryset = (
         Notification.objects.select_related("request_id", "user_id", "template_id")
         .all()
-        .order_by("-created_at")
+        .order_by("-created_at", "-id")
     )
     permission_classes = [IsAuthenticated, IsSystemAdmin]
     pagination_class = StandardPagination
+    ordering_fields = ["created_at", "status", "channel", "event_code", "recipient_email"]
+    ordering = ["-created_at", "-id"]
 
     def get_serializer_class(self):
         if self.action == "retrieve":

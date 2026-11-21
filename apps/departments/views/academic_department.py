@@ -21,6 +21,8 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = AcademicDepartmentSerializer
     pagination_class = StandardPagination
     permission_classes = [IsAuthenticated, IsSystemAdmin]
+    ordering_fields = ["code", "stream", "type", "category", "degree", "branch", "status", "updated_at"]
+    ordering = ["code", "id"]
 
     def get_queryset(self):
 
@@ -31,7 +33,7 @@ class AcademicDepartmentViewSet(viewsets.ModelViewSet):
         else:
             qs = AcademicDepartment.objects.all()
 
-        qs = qs.order_by("code")
+        qs = qs.order_by("code", "id")
         search = self.request.query_params.get("search", "").strip()
         if search:
             qs = qs.filter(

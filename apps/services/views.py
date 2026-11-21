@@ -44,6 +44,8 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
     serializer_class = ServiceSerializer
     pagination_class = StandardPagination
+    ordering_fields = ["code", "name", "status", "created_at", "service_department_id__name"]
+    ordering = ["-created_at", "-id"]
     
     # Actions that must remain publicly accessible (student-facing directory)
     PUBLIC_ACTIONS = {
@@ -364,6 +366,8 @@ class ServiceFieldViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ServiceFieldSerializer
     pagination_class = StandardPagination
+    ordering_fields = ["display_order", "id", "field_label", "field_type", "is_required"]
+    ordering = ["display_order", "id"]
 
     def get_permissions(self):
         if self.action in {"create", "update", "partial_update", "destroy", "reorder"}:

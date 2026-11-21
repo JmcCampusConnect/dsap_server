@@ -17,8 +17,10 @@ from ..serializers import UserSerializer, ResetPasswordSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
-    filter_backends = [filters.SearchFilter]
-    search_fields = ["username","email"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["username", "email"]
+    ordering_fields = ["id", "username", "email", "is_active"]
+    ordering = ["id"]
 
     # ------------------------------------------------------------------
     # Permissions

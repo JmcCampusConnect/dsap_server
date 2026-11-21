@@ -26,12 +26,14 @@ from common.pagination import StandardPagination
 class ServiceDepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceDepartmentSerializer
     pagination_class = StandardPagination
+    ordering_fields = ["code", "name", "status", "updated_at"]
+    ordering = ["code", "id"]
 
     def get_queryset(self):
         user = self.request.user
 
         # Start with base queryset with search/filter capabilities
-        qs = ServiceDepartment.objects.all().order_by("code")
+        qs = ServiceDepartment.objects.all().order_by("code", "id")
         
         # Apply search/filter parameters (only for system admin or full access)
         # For service department roles, we'll filter by their department after applying search

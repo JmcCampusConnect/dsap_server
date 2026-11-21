@@ -260,7 +260,21 @@ class NotificationTemplateSystemTests(TestCase):
     def test_admin_can_list_and_retrieve_templates(self):
         resp = self.client_admin.get("/api/notifications/templates/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(resp.data), 2)
+        self.assertGreaterEqual(resp.data["count"], 2)
+        self.assertEqual(resp.data["page"], 1)
+        self.assertEqual(resp.data["page_size"], 100)
+        self.assertGreaterEqual(len(resp.data["results"]), 2)
+
+        filtered_resp = self.client_admin.get(
+            "/api/notifications/templates/?search=REQ_SUBMITTED&page_size=1000"
+        )
+        self.assertEqual(filtered_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(filtered_resp.data["count"], 1)
+        self.assertEqual(filtered_resp.data["page_size"], 1000)
+
+        options_resp = self.client_admin.get("/api/notifications/templates/options/")
+        self.assertEqual(options_resp.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(options_resp.data["total_count"], 2)
 
         detail_resp = self.client_admin.get(f"/api/notifications/templates/{self.template_submitted.id}/")
         self.assertEqual(detail_resp.status_code, status.HTTP_200_OK)

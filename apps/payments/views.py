@@ -32,7 +32,7 @@ class PaymentViewSet(GenericViewSet):
         "request_id__student_id__register_number",
     ]
     ordering_fields = ["request_id__submitted_at", "amount", "payment_status"]
-    ordering = ["request_id__submitted_at"]
+    ordering = ["request_id__submitted_at", "id"]
 
     def get_queryset(self):
         return Payment.objects.select_related(

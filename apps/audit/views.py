@@ -13,6 +13,8 @@ class AuditLogListView(ListAPIView):
     permission_classes = [IsAuthenticated, IsSystemAdmin]
     queryset = AuditLog.objects.all()
     pagination_class = StandardPagination
+    ordering_fields = ["created_at", "action", "model_name", "user_name"]
+    ordering = ["-created_at", "-id"]
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -48,6 +50,7 @@ class AuditLogListView(ListAPIView):
                 | models.Q(request_path__icontains=search)
             )
 
+        queryset = self.filter_queryset(queryset)
         page = self.paginate_queryset(queryset)
 
         if page is not None:

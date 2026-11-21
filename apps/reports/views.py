@@ -159,6 +159,15 @@ class RequestReportListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsReportViewer]
     pagination_class = StandardPagination
     serializer_class = RequestReportSerializer
+    ordering_fields = [
+        "request_number",
+        "created_at",
+        "submitted_at",
+        "current_status",
+        "service_id__name",
+        "student_id__name",
+    ]
+    ordering = ["-submitted_at", "-id"]
 
     def get_queryset(self):
         user = self.request.user
